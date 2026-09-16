@@ -19,6 +19,19 @@ export const getBanks = () => fetch('/api/banks').then(j)
 export const getProgress = (bank) => fetch('/api/progress' + (bank ? '?bank=' + bank : '')).then(j)
 export const getMarked = (bank) => fetch('/api/marked/' + bank).then(j)
 export const getQuestion = (bank, id) => fetch('/api/questions/' + bank + '/' + id).then(j)
+
+// 解析懒加载：列表接口默认不含 expl/refAnswer，展开解析时按 id 取全量
+const detailCache = new Map()
+export const getDetail = (bank, id) => {
+  const key = bank + ':' + id
+  if (!detailCache.has(key)) {
+    detailCache.set(
+      key,
+      fetch('/api/questions/' + bank + '/' + id).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    )
+  }
+  return detailCache.get(key)
+}
 export const search = (bank, q, kind) =>
   fetch('/api/search/' + bank + '?' + qs({ q, kind })).then(j)
 export const postMark = (id, on) =>

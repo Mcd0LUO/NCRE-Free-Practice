@@ -8,6 +8,11 @@ dist/
 server/progress.json
 server/progress.json.tmp
 
+# 版权题库：来源于第三方软件，仅供本机个人学习，不随代码分发
+# 需要时运行导出脚本重新生成本地数据
+server/data/bank_*.json
+server/data/images/
+
 # 编辑器 / 系统
 .vscode/
 .idea/

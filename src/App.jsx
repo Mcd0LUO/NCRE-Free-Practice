@@ -47,6 +47,9 @@ export default function App() {
   // 标记题
   const [markedList, setMarkedList] = useState(null)
 
+  // 解析懒加载：id -> 完整题目（仅含被展开过解析的题）
+  const [details, setDetails] = useState({})
+
   // 搜索
   const [searchQ, setSearchQ] = useState('')
   const [searchKind, setSearchKind] = useState('')
@@ -259,7 +262,9 @@ export default function App() {
     for (const it of items) byIdRef.current.set(it.id, it)
   }, [items])
 
-  const item = items[idx]
+  const rawItem = items[idx]
+  // 合并懒加载到的解析，保持展示层字段完整
+  const item = rawItem && details[rawItem.id] ? { ...rawItem, ...details[rawItem.id] } : rawItem
 
   const submit = useCallback(
     async (r) => {
@@ -335,12 +340,21 @@ export default function App() {
 
   const onToggleShow = useCallback(() => {
     if (!item) return
+    // 列表数据不含解析，展开时再按 id 拉全量
+    if (!details[item.id]) {
+      api
+        .getDetail(bank, item.id)
+        .then((full) => {
+          if (full) setDetails((d) => ({ ...d, [item.id]: full }))
+        })
+        .catch(() => {})
+    }
     setResults((s) => {
       const r = s[item.id]
       if (!r) return s
       return { ...s, [item.id]: { ...r, revealed: !r.revealed } }
     })
-  }, [item])
+  }, [item, details, bank])
 
   const onMark = useCallback((id) => {
     setMarked((prev) => {
@@ -711,6 +725,7 @@ export default function App() {
                   picks={picks}
                   results={results}
                   marked={marked}
+                  details={details}
                   onPick={onPick}
                   onFill={onFill}
                   onSelf={onSelf}
@@ -788,6 +803,7 @@ export default function App() {
               picks={picks}
               results={results}
               marked={marked}
+              details={details}
               onPick={onPick}
               onFill={onFill}
               onSelf={onSelf}
@@ -808,6 +824,7 @@ export default function App() {
               picks={picks}
               results={results}
               marked={marked}
+              details={details}
               onPick={onPick}
               onFill={onFill}
               onSelf={onSelf}
@@ -932,6 +949,7 @@ export default function App() {
                 picks={picks}
                 results={results}
                 marked={marked}
+                details={details}
                 onPick={onPick}
                 onFill={onFill}
                 onSelf={onSelf}
@@ -991,6 +1009,7 @@ export default function App() {
               picks={picks}
               results={results}
               marked={marked}
+              details={details}
               locked={locked}
               onPick={onPick}
               onFill={onFill}

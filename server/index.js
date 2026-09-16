@@ -1,4 +1,5 @@
 import express from 'express'
+import compression from 'compression'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,16 +10,32 @@ const PROG = path.join(__dirname, 'progress.json')
 const PORT = process.env.PORT || 5181
 
 const app = express()
+app.disable('x-powered-by') // 不暴露技术栈
+app.use(compression()) // JSON 体积大，gzip 后约省 78-87%
 app.use(express.json({ limit: '4mb' }))
 
-// ---------- banks (loaded once, served from memory) ----------
-const banks = JSON.parse(fs.readFileSync(path.join(DATA, 'banks.json'), 'utf8'))
+// ---------- banks ----------
+// 按等级分文件：bank_<id>.json。每库独立读取，互不影响，
+// 新增等级只需放入文件，无需改动这里。
+const banks = {}
 const byId = {}
-for (const key of Object.keys(banks)) {
-  const b = banks[key]
-  byId[key] = new Map(b.questions.map(q => [q.id, q]))
-  b.questionIds = b.questions.map(q => q.id)
-  delete b.questions   // questions served on demand to keep payload small
+for (const f of fs.readdirSync(DATA)) {
+  const m = f.match(/^bank_([w-]+).json$/)
+  if (!m) continue
+  const key = m[1]
+  try {
+    const b = JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'))
+    byId[key] = new Map(b.questions.map(q => [q.id, q]))
+    b.questionIds = b.questions.map(q => q.id)
+    delete b.questions   // 题目按需下发，避免常驻大对象
+    banks[key] = b
+  } catch (e) {
+    console.warn('[server] skip ' + f + ': ' + e.message)
+  }
+}
+if (!Object.keys(banks).length) {
+  console.error('[server] 未找到任何 bank_*.json，请先运行导出脚本生成数据')
+  process.exit(1)
 }
 console.log('[server] banks:', Object.keys(banks).map(k =>
   k + '=' + banks[k].name + '(' + banks[k].questionIds.length + '题)').join(', '))
@@ -92,7 +109,13 @@ app.get('/api/questions', (req, res) => {
   }
   const total = ids.length
   const slice = ids.slice((p - 1) * n, p * n).map(id => byId[bank].get(id))
-  res.json({ total, page: p, size: n, pages: Math.ceil(total / n), items: slice })
+
+  // 数据分层：解析(expl/refAnswer)占用单题体积约 50%，列表页并不需要。
+  // 默认剔除，前端点「查看解析」时按 id 单取（/api/questions/:bank/:id）。
+  // 需要完整数据时传 fields=full（判分与解析渲染仍走单题接口，不受影响）。
+  const wantFull = clean(req.query.fields) === 'full'
+  const items = wantFull ? slice : slice.map(({ expl, refAnswer, ...rest }) => rest)
+  res.json({ total, page: p, size: n, pages: Math.ceil(total / n), items })
 })
 
 // C1: 全局搜索 —— 跨分类检索题干与选项，返回分类归属便于跳转
@@ -126,6 +149,7 @@ app.get('/api/search/:bank', (req, res) => {
   res.json({ total: hits.length, truncated: hits.length >= 300, query: kw, items: hits })
 })
 
+// 单题始终返回全量（含解析），供解析懒加载使用
 app.get('/api/questions/:bank/:id', (req, res) => {
   const it = byId[req.params.bank]?.get(+req.params.id)
   if (!it) return res.status(404).json({ error: 'not found' })

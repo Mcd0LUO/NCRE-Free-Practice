@@ -3,15 +3,17 @@ import QuestionCard from './QuestionCard.jsx'
 import { Empty, Loading } from './components.jsx'
 
 export default function RunView({
-  items, idx, setIdx, picks, results, marked, locked = false,
+  items, idx, setIdx, picks, results, marked, locked = false, details,
   onPick, onFill, onSelf, onCheck, onToggleShow, onMark,
   header, emptyTitle = '没有题目', emptyHint, footer,
 }) {
   if (items === null) return <Loading />
   if (!items.length) return <Empty title={emptyTitle} hint={emptyHint} action={footer} />
 
-  const item = items[idx]
-  if (!item) return <Empty title="题目索引越界" hint="请返回上一级重新选择。" />
+  const raw = items[idx]
+  if (!raw) return <Empty title="题目索引越界" hint="请返回上一级重新选择。" />
+  // 列表数据不含解析；已懒加载过的题在此合并回完整字段
+  const item = details && details[raw.id] ? { ...raw, ...details[raw.id] } : raw
 
   return (
     <div className="space-y-4">
