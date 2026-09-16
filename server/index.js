@@ -2,6 +2,7 @@ import express from 'express'
 import compression from 'compression'
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -13,6 +14,70 @@ const app = express()
 app.disable('x-powered-by') // 不暴露技术栈
 app.use(compression()) // JSON 体积大，gzip 后约省 78-87%
 app.use(express.json({ limit: '4mb' }))
+
+// ---------- 访问口令（Cookie 会话） ----------
+// 口令从 600 的 env 文件读取（systemd EnvironmentFile），不写进仓库；
+// 登录成功后签发 HMAC 签名的 HttpOnly Cookie，30 天内免登。
+const AUTH_USER = process.env.NCRE_USER || 'admin'
+const AUTH_PASS = process.env.NCRE_PASS || ''
+const AUTH_SECRET = process.env.NCRE_SECRET || crypto.randomBytes(32).toString('hex')
+const AUTH_ON = AUTH_PASS.length > 0
+const COOKIE = 'ncre_session'
+const SESSION_TTL_MS = 30 * 24 * 3600 * 1000
+
+function signSession (user) {
+  const body = Buffer.from(JSON.stringify({ u: user, exp: Date.now() + SESSION_TTL_MS })).toString('base64url')
+  const mac = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url')
+  return body + '.' + mac
+}
+function verifySession (token) {
+  if (!token || !token.includes('.')) return null
+  const [body, mac] = token.split('.')
+  const expect = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url')
+  if (mac.length !== expect.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expect))) return null
+  try {
+    const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'))
+    return p && p.exp > Date.now() ? p : null
+  } catch { return null }
+}
+function readCookie (header, name) {
+  for (const part of String(header || '').split(';')) {
+    const i = part.indexOf('=')
+    if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim())
+  }
+  return ''
+}
+const isAuthed = (req) => !AUTH_ON || !!verifySession(readCookie(req.headers.cookie, COOKIE))
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {}
+  const okUser = typeof username === 'string' && username === AUTH_USER
+  const okPass = typeof password === 'string' && AUTH_PASS.length > 0 &&
+    password.length === AUTH_PASS.length &&
+    crypto.timingSafeEqual(Buffer.from(password), Buffer.from(AUTH_PASS))
+  if (!okUser || !okPass) return res.status(401).json({ error: '用户名或密码错误' })
+  res.setHeader('Set-Cookie', COOKIE + '=' + signSession(AUTH_USER) + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=' + Math.floor(SESSION_TTL_MS / 1000))
+  res.json({ ok: true })
+})
+
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie', COOKIE + '=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0')
+  res.json({ ok: true })
+})
+
+app.get('/api/me', (req, res) => {
+  if (!isAuthed(req)) return res.status(401).json({ error: 'unauthorized' })
+  res.json({ ok: true, user: AUTH_USER })
+})
+
+// 除登录/登出外，API 与题目图片一律要求已登录会话
+app.use((req, res, next) => {
+  if (req.path === '/api/login' || req.path === '/api/logout') return next()
+  if (req.path.startsWith('/api') || req.path.startsWith('/images')) {
+    if (!isAuthed(req)) return res.status(401).json({ error: 'unauthorized' })
+  }
+  next()
+})
 
 // ---------- banks ----------
 // 按等级分文件：bank_<id>.json。每库独立读取，互不影响，

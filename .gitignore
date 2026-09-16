@@ -19,3 +19,4 @@ Thumbs.db
 
 # 备份目录（由备份接口生成）
 backups/
+.env

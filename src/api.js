@@ -15,6 +15,15 @@ function qs(params) {
   return sp.toString()
 }
 
+export const getMe = () => fetch('/api/me').then(j)
+export const login = (username, password) =>
+  fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  }).then(j)
+export const logout = () => fetch('/api/logout', { method: 'POST' }).then(j)
+
 export const getBanks = () => fetch('/api/banks').then(j)
 export const getProgress = (bank) => fetch('/api/progress' + (bank ? '?bank=' + bank : '')).then(j)
 export const getMarked = (bank) => fetch('/api/marked/' + bank).then(j)

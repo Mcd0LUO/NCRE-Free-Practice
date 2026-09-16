@@ -5,10 +5,12 @@ import RunView from './RunView.jsx'
 import { Tag, ProgressBar, Icon, Loading, Empty } from './components.jsx'
 import { grade, KIND_LABEL } from './grading'
 import * as api from './api.js'
+import Login from './Login.jsx'
 
 const EMPTY = []
 
 export default function App() {
+  const [authed, setAuthed] = useState(null)
   const [banks, setBanks] = useState([])
   const [bank, setBank] = useState(null)
   const [stats, setStats] = useState(null)
@@ -67,13 +69,24 @@ export default function App() {
 
   const reqId = useRef(0)
 
+  // ---------- 鉴权 ----------
+  useEffect(() => {
+    let alive = true
+    api
+      .getMe()
+      .then(() => { if (alive) setAuthed(true) })
+      .catch(() => { if (alive) setAuthed(false) })
+    return () => { alive = false }
+  }, [])
+
   // ---------- 初始化 ----------
   useEffect(() => {
+    if (!authed) return
     api.getBanks().then((b) => {
       setBanks(b)
       setBank(b[0]?.id ?? null)
     })
-  }, [])
+  }, [authed])
 
   const refreshStats = useCallback(() => {
     if (!bank) return
@@ -563,6 +576,10 @@ export default function App() {
     [bank, refreshStats],
   )
 
+  const doLogout = useCallback(() => {
+    api.logout().catch(() => {}).finally(() => window.location.reload())
+  }, [])
+
   const switchBank = (id) => {
     setBank(id)
     setSel(null)
@@ -596,6 +613,15 @@ export default function App() {
 
   const showTree = mode === 'category' && !!sel && !!stats
 
+  if (authed === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-gray-400">
+        正在验证登录状态…
+      </div>
+    )
+  }
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -618,6 +644,7 @@ export default function App() {
         open={sidebar}
         onClose={() => setSidebar(false)}
         onReset={doReset}
+        onLogout={doLogout}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
