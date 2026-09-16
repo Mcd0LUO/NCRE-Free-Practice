@@ -1,12 +1,47 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Icon, ProgressBar } from './components.jsx'
+import * as api from './api.js'
+
+// 进度备份：明文单文件，误清即不可恢复，这里给一个手动快照入口
+function BackupRow() {
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const doBackup = () => {
+    setBusy(true)
+    api
+      .postBackup()
+      .then(() => {
+        setMsg('已备份')
+        setTimeout(() => setMsg(''), 2500)
+      })
+      .catch(() => setMsg('备份失败'))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 border-t border-gray-200 pt-2">
+      <button
+        type="button"
+        onClick={doBackup}
+        disabled={busy}
+        className="n-btn px-1.5 py-0.5 text-[11px] text-gray-500"
+      >
+        备份进度
+      </button>
+      {msg && <span className="text-[11px] text-gray-400">{msg}</span>}
+    </div>
+  )
+}
 
 // 左侧固定侧边栏：米色背景 + 页面列表（Notion 文档结构）
-export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, open, onClose }) {
+export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, open, onClose }) {
   const modes = [
     { id: 'category', label: '分类练习', icon: 'list', hint: '按知识点逐类攻克' },
     { id: 'exam', label: '模拟考试', icon: 'clock', hint: '限时成套做卷' },
     { id: 'wrong', label: '错题本', icon: 'target', hint: '只刷做错的题' },
+    { id: 'marked', label: '标记题', icon: 'flag', hint: '我标记待复习的题' },
+    { id: 'search', label: '全局搜索', icon: 'search', hint: '按关键词搜题干与选项' },
   ]
 
   return (
@@ -90,6 +125,11 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
                     {wrongCount}
                   </span>
                 )}
+                {m.id === 'marked' && markedCount > 0 && (
+                  <span className="shrink-0 rounded-md bg-yellow-50 px-1.5 py-0.5 font-mono text-[11px] text-[#dfab01]">
+                    {markedCount}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -106,6 +146,7 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
             <p className="mt-0.5 text-xs text-gray-400">
               客观题正确率 {Math.round((stats.objective?.accuracy || 0) * 100)}%
             </p>
+            <BackupRow />
           </div>
         )}
       </aside>

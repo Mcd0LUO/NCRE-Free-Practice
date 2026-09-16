@@ -3,7 +3,7 @@ import QuestionCard from './QuestionCard.jsx'
 import { Empty, Loading } from './components.jsx'
 
 export default function RunView({
-  items, idx, setIdx, picks, results, marked,
+  items, idx, setIdx, picks, results, marked, locked = false,
   onPick, onFill, onSelf, onCheck, onToggleShow, onMark,
   header, emptyTitle = '没有题目', emptyHint, footer,
 }) {
@@ -24,6 +24,7 @@ export default function RunView({
         pick={picks[item.id]}
         result={results[item.id]}
         marked={marked?.has(item.id)}
+        locked={locked}
         onPick={onPick}
         onFill={onFill}
         onSelf={onSelf}

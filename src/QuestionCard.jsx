@@ -3,7 +3,7 @@ import { LETTERS, correctLetters, KIND_LABEL } from './grading'
 import { RichText, Tag, Verdict, Icon } from './components.jsx'
 
 export default function QuestionCard({
-  item, index, total, pick, result,
+  item, index, total, pick, result, locked = false,
   onPick, onFill, onSelf, onCheck, onToggleShow, marked, onMark,
 }) {
   const cor = correctLetters(item)
@@ -27,6 +27,9 @@ export default function QuestionCard({
       <header className="mb-3 flex flex-wrap items-center gap-2">
         <Tag tone={kindTone}>{KIND_LABEL[item.kind] || item.kind}</Tag>
         <Tag>{item.score} 分</Tag>
+        {item.verdict === 'part' && <Tag tone="yellow">上次：部分正确</Tag>}
+        {item.verdict === 'bad' && <Tag tone="red">上次：答错</Tag>}
+        {result?.restored && <Tag tone="gray">已作答</Tag>}
         <Tag tone="gray" title={item.partName + ' / ' + item.secName}>
           {item.secName}
         </Tag>
@@ -76,7 +79,7 @@ export default function QuestionCard({
               <li key={i}>
                 <button
                   type="button"
-                  disabled={checked}
+                  disabled={checked || locked}
                   onClick={() => onPick(L)}
                   aria-pressed={on}
                   className={
@@ -136,7 +139,7 @@ export default function QuestionCard({
                     <input
                       id={'blank-' + s.n}
                       value={given}
-                      disabled={checked}
+                      disabled={checked || locked}
                       onChange={(e) => onFill(s.n - 1, e.target.value)}
                       aria-label={'第 ' + s.n + ' 空作答'}
                       className={
@@ -193,7 +196,7 @@ export default function QuestionCard({
             </p>
           )}
 
-          {!checked && (
+          {!checked && !locked && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-gray-600">自评：</span>
               <button type="button" onClick={() => onSelf('ok')} className="n-btn border border-gray-200">
@@ -222,8 +225,27 @@ export default function QuestionCard({
         </div>
       )}
 
+      {locked && !checked && (
+        <p className="mt-3 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-500">
+          本场考试已交卷，不能再作答。
+        </p>
+      )}
+
+      {/* B3: 已作答但未展开结果时，提示上次的选择 */}
+      {!checked && !locked && (pick?.letters || (pick?.fills || []).some(Boolean)) && (
+        <p className="mt-3 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-500">
+          上次作答：
+          {pick.letters ? <span className="font-mono text-gray-700">{pick.letters}</span> : null}
+          {!pick.letters && (pick.fills || []).some(Boolean) ? (
+            <span className="text-gray-700">
+              {(pick.fills || []).map((f, i) => (f ? '第' + (i + 1) + '空 ' + f : null)).filter(Boolean).join('，')}
+            </span>
+          ) : null}
+        </p>
+      )}
+
       {/* 确认按钮 */}
-      {!checked && item.kind !== 'essay' && (
+      {!checked && !locked && item.kind !== 'essay' && (
         <div className="mt-4">
           <button
             type="button"

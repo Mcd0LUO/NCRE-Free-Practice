@@ -95,6 +95,37 @@ app.get('/api/questions', (req, res) => {
   res.json({ total, page: p, size: n, pages: Math.ceil(total / n), items: slice })
 })
 
+// C1: 全局搜索 —— 跨分类检索题干与选项，返回分类归属便于跳转
+app.get('/api/search/:bank', (req, res) => {
+  const b = banks[req.params.bank]
+  if (!b) return res.status(404).json({ error: 'bank not found' })
+  const kw = clean(req.query.q)
+  if (!kw) return res.json({ total: 0, items: [], query: '' })
+  const kind = clean(req.query.kind)
+  const map = byId[req.params.bank]
+  const hits = []
+  for (const it of map.values()) {
+    if (kind && it.kind !== kind) continue
+    const inStem = it.stem.includes(kw)
+    const inOpt = it.options.some((o) => o.includes(kw))
+    if (!inStem && !inOpt) continue
+    hits.push({
+      id: it.id,
+      kind: it.kind,
+      part: it.part,
+      partName: it.partName,
+      sec: it.sec,
+      secName: it.secName,
+      score: it.score,
+      letters: it.letters,
+      stem: it.stem.slice(0, 160),
+      where: inStem ? 'stem' : 'option',
+    })
+    if (hits.length >= 300) break // 上限，避免超大响应
+  }
+  res.json({ total: hits.length, truncated: hits.length >= 300, query: kw, items: hits })
+})
+
 app.get('/api/questions/:bank/:id', (req, res) => {
   const it = byId[req.params.bank]?.get(+req.params.id)
   if (!it) return res.status(404).json({ error: 'not found' })
@@ -227,8 +258,72 @@ app.get('/api/paper/:bank/:ver/:group', (req, res) => {
   })
 })
 
-// progress
-app.get('/api/progress', (req, res) => res.json(progress))
+// progress —— 支持按题库过滤，前端启动时用它水合已答状态
+app.get('/api/progress', (req, res) => {
+  const bank = clean(req.query.bank)
+  if (!bank) return res.json(progress)
+  const map = byId[bank]
+  if (!map) return res.status(404).json({ error: 'bank not found' })
+  const answers = {}
+  for (const [id, rec] of Object.entries(progress.answers)) {
+    if (map.has(+id)) answers[id] = rec
+  }
+  const marks = {}
+  for (const [id, t] of Object.entries(progress.marks)) {
+    if (map.has(+id)) marks[id] = t
+  }
+  res.json({ answers, marks, bank })
+})
+
+// 已标记的题
+app.get('/api/marked/:bank', (req, res) => {
+  const b = banks[req.params.bank]
+  if (!b) return res.status(404).json({ error: 'bank not found' })
+  const map = byId[req.params.bank]
+  const ids = Object.keys(progress.marks)
+    .map(Number)
+    .filter((id) => map.has(id))
+    .sort((a, c) => (progress.marks[c] || 0) - (progress.marks[a] || 0))
+  res.json({ total: ids.length, items: ids.map((id) => map.get(id)) })
+})
+
+// ---------- 进度备份 ----------
+const BACKUP_DIR = path.join(__dirname, 'backups')
+function listBackups () {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return []
+    return fs
+      .readdirSync(BACKUP_DIR)
+      .filter((f) => f.endsWith('.json'))
+      .sort()
+      .reverse()
+      .map((f) => {
+        const st = fs.statSync(path.join(BACKUP_DIR, f))
+        return { name: f, size: st.size, t: st.mtimeMs }
+      })
+  } catch {
+    return []
+  }
+}
+
+app.get('/api/backups', (req, res) => res.json(listBackups()))
+
+app.post('/api/backup', (req, res) => {
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true })
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const name = 'progress-' + stamp + '.json'
+    fs.writeFileSync(path.join(BACKUP_DIR, name), JSON.stringify(progress))
+    // 只保留最近 30 份
+    const all = listBackups()
+    for (const old of all.slice(30)) {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, old.name)) } catch {}
+    }
+    res.json({ ok: true, name })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
 
 app.post('/api/answer', (req, res) => {
   const { bank, id, ok, score, state, given, letters, fills } = req.body || {}

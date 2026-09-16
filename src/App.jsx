@@ -29,15 +29,31 @@ export default function App() {
   const [picks, setPicks] = useState({})
   const [results, setResults] = useState({})
   const [marked, setMarked] = useState(() => new Set())
+  const [hydrated, setHydrated] = useState(false)
+  // 题目 id -> 题目对象，供水合时补全分值；避免为每道已答题单独请求
+  const byIdRef = useRef(new Map())
 
   // 考试
   const [paperList, setPaperList] = useState([])
   const [exam, setExam] = useState(null)
   const [examLeft, setExamLeft] = useState(0)
   const [examSubmitted, setExamSubmitted] = useState(false)
+  const [examResult, setExamResult] = useState(null)
+  const runStatsRef = useRef({ done: 0, right: 0, score: 0, full: 0 })
 
   // 错题本
   const [wrong, setWrong] = useState(null)
+
+  // 标记题
+  const [markedList, setMarkedList] = useState(null)
+
+  // 搜索
+  const [searchQ, setSearchQ] = useState('')
+  const [searchKind, setSearchKind] = useState('')
+  const [searchRes, setSearchRes] = useState(null)
+  const [searching, setSearching] = useState(false)
+  // 搜索结果里点开某题时，用它承载题目对象
+  const [searchOpen, setSearchOpen] = useState(null)
 
   const reqId = useRef(0)
 
@@ -60,6 +76,43 @@ export default function App() {
   useEffect(() => {
     if (bank) refreshStats()
   }, [bank, refreshStats])
+
+  // A1: 从服务端恢复已答状态与标记。
+  // 服务端一直是权威数据源，此前前端只写不读，刷新即丢。
+  useEffect(() => {
+    if (!bank) return
+    let alive = true
+    setHydrated(false)
+    api
+      .getProgress(bank)
+      .then((p) => {
+        if (!alive) return
+        const nextResults = {}
+        const nextPicks = {}
+        for (const [id, rec] of Object.entries(p.answers || {})) {
+          nextResults[+id] = {
+            state: rec.state || (rec.ok ? 'ok' : 'bad'),
+            score: rec.score || 0,
+            full: byIdRef.current?.get(+id)?.score ?? rec.full ?? 0,
+            revealed: false,
+            restored: true,
+          }
+          if (rec.letters || rec.fills) {
+            nextPicks[+id] = { letters: rec.letters, fills: rec.fills }
+          }
+        }
+        setResults(nextResults)
+        setPicks(nextPicks)
+        setMarked(new Set(Object.keys(p.marks || {}).map(Number)))
+        setHydrated(true)
+      })
+      .catch(() => {
+        if (alive) setHydrated(true)
+      })
+    return () => {
+      alive = false
+    }
+  }, [bank])
 
   const resetRun = useCallback(() => {
     setIdx(0)
@@ -108,6 +161,34 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, bank, results])
 
+  // ---------- 标记题 ----------
+  useEffect(() => {
+    if (mode !== 'marked' || !bank) return
+    resetRun()
+    setMarkedList(null)
+    api.getMarked(bank).then((r) => setMarkedList(r.items))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, bank, marked])
+
+  // ---------- 搜索 ----------
+  const runSearch = useCallback(
+    (kw, kind, silent) => {
+      if (!bank) return Promise.resolve()
+      const term = (kw ?? '').trim()
+      if (!term) {
+        setSearchRes(null)
+        return Promise.resolve()
+      }
+      if (!silent) setSearching(true)
+      return api
+        .search(bank, term, kind)
+        .then(setSearchRes)
+        .catch(() => setSearchRes(null))
+        .finally(() => setSearching(false))
+    },
+    [bank],
+  )
+
   // ---------- 考试 ----------
   useEffect(() => {
     if (mode !== 'exam' || !bank) return
@@ -121,10 +202,39 @@ export default function App() {
     return () => clearInterval(t)
   }, [exam, examSubmitted])
 
+  // A2: 倒计时归零自动交卷（此前只显示「时间到」，并不会真正收卷）
+  useEffect(() => {
+    if (!exam || examSubmitted || examLeft > 0) return
+    setExamSubmitted(true)
+    const answered = Object.keys(results).length
+    api
+      .postSession({
+        bank,
+        ver: exam.ver,
+        group: exam.group,
+        total: exam.items.length,
+        answered,
+        right: runStatsRef.current.right,
+        score: runStatsRef.current.score,
+        full: runStatsRef.current.full,
+        auto: true,
+      })
+      .catch(() => {})
+    setExamResult({
+      total: exam.items.length,
+      answered,
+      right: runStatsRef.current.right,
+      score: runStatsRef.current.score,
+      full: runStatsRef.current.full,
+      auto: true,
+    })
+  }, [exam, examSubmitted, examLeft, bank, results])
+
   const loadPaper = async (ver, group) => {
     const p = await api.getPaper(bank, ver, group)
     resetRun()
     setExamSubmitted(false)
+    setExamResult(null)
     setExam({ ...p, items: p.sections.flatMap((s) => s.items) })
     setExamLeft((banks.find((b) => b.id === bank)?.timeMin ?? 90) * 60)
     window.scrollTo({ top: 0 })
@@ -134,9 +244,16 @@ export default function App() {
   const items = useMemo(() => {
     if (mode === 'category') return list ?? EMPTY
     if (mode === 'wrong') return wrong ?? EMPTY
+    if (mode === 'marked') return markedList ?? EMPTY
     if (mode === 'exam') return exam?.items ?? EMPTY
+    if (mode === 'search') return searchOpen ? [searchOpen] : EMPTY
     return EMPTY
-  }, [mode, list, wrong, exam])
+  }, [mode, list, wrong, markedList, exam, searchOpen])
+
+  // 刷新题目集合的 id 索引
+  useEffect(() => {
+    for (const it of items) byIdRef.current.set(it.id, it)
+  }, [items])
 
   const item = items[idx]
 
@@ -168,7 +285,7 @@ export default function App() {
   )
 
   const onCheck = useCallback(() => {
-    if (!item || results[item.id]) return
+    if (!item || results[item.id] || locked) return
     const r = grade(item, picks[item.id])
     if (r.state === 'none') {
       if (!window.confirm('还没有作答，直接看答案吗？')) return
@@ -176,23 +293,25 @@ export default function App() {
       return
     }
     submit(r)
-  }, [item, picks, results, submit])
+  }, [item, picks, results, submit, locked])
+
+  const locked = mode === 'exam' && examSubmitted
 
   const onPick = useCallback(
     (L) => {
-      if (!item || results[item.id]) return
+      if (!item || results[item.id] || locked) return
       const cur = picks[item.id]?.letters || ''
       let next
       if (item.kind === 'single') next = cur === L ? '' : L
       else next = (cur.includes(L) ? cur.replace(L, '') : cur + L).split('').sort().join('')
       setPicks((s) => ({ ...s, [item.id]: { ...s[item.id], letters: next } }))
     },
-    [item, picks, results],
+    [item, picks, results, locked],
   )
 
   const onFill = useCallback(
     (slot, val) => {
-      if (!item) return
+      if (!item || locked) return
       setPicks((s) => {
         const p = { ...(s[item.id] || {}) }
         p.fills = [...(p.fills || [])]
@@ -200,7 +319,7 @@ export default function App() {
         return { ...s, [item.id]: p }
       })
     },
-    [item],
+    [item, locked],
   )
 
   const onSelf = useCallback(
@@ -223,11 +342,7 @@ export default function App() {
       const on = !next.has(id)
       if (on) next.add(id)
       else next.delete(id)
-      api.postAnswer && fetch('/api/mark', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, on }),
-      }).catch(() => {})
+      api.postMark(id, on).catch(() => {})
       return next
     })
   }, [])
@@ -289,6 +404,8 @@ export default function App() {
     return { done, right, score, full }
   }, [results])
 
+  runStatsRef.current = runStats
+
   const currentBank = banks.find((b) => b.id === bank)
   const sections = stats?.sections || []
   const parts = stats?.parts || []
@@ -338,10 +455,12 @@ export default function App() {
           setExam(null)
           setSel(null)
           setSidebar(false)
+          setSearchOpen(null)
           resetRun()
         }}
         stats={stats}
         wrongCount={stats?.wrong || 0}
+        markedCount={marked.size}
         open={sidebar}
         onClose={() => setSidebar(false)}
       />
@@ -667,6 +786,149 @@ export default function App() {
             />
           )}
 
+          {/* ---------- 标记题 ---------- */}
+          {mode === 'marked' && (
+            <RunView
+              items={markedList}
+              idx={idx}
+              setIdx={setIdx}
+              picks={picks}
+              results={results}
+              marked={marked}
+              onPick={onPick}
+              onFill={onFill}
+              onSelf={onSelf}
+              onCheck={onCheck}
+              onToggleShow={onToggleShow}
+              onMark={onMark}
+              emptyTitle="还没有标记任何题目"
+              emptyHint="做题时点右上角的旗标即可标记，标记的题会集中到这里。"
+            />
+          )}
+
+          {/* ---------- 全局搜索 ---------- */}
+          {mode === 'search' && (
+            <div className="space-y-4">
+              <div>
+                <h1 className="text-xl font-semibold text-[#37352f] md:text-2xl">全局搜索</h1>
+                <p className="mt-1 text-sm text-gray-600">在题干与选项中检索关键词，跨分类查找。</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') runSearch(searchQ, searchKind)
+                  }}
+                  placeholder="输入关键词后回车，例如：索引 / 事务 / SQL Server"
+                  aria-label="搜索关键词"
+                  className="n-input min-w-0 flex-1 px-3 py-2 text-sm"
+                />
+                <select
+                  value={searchKind}
+                  onChange={(e) => {
+                    setSearchKind(e.target.value)
+                    if (searchQ.trim()) runSearch(searchQ, e.target.value)
+                  }}
+                  className="n-input px-2 py-2 text-sm"
+                  aria-label="题型筛选"
+                >
+                  <option value="">全部题型</option>
+                  <option value="single">单选题</option>
+                  <option value="multi">多选题</option>
+                  <option value="fill">填空题</option>
+                  <option value="essay">设计与应用题</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => runSearch(searchQ, searchKind)}
+                  className="rounded-md bg-[#2eaadc] px-3 py-1.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#2898c4] active:bg-[#2388b0]"
+                >
+                  搜索
+                </button>
+              </div>
+
+              {searching && <Loading text="搜索中…" />}
+
+              {!searching && searchRes && (
+                <>
+                  <p className="text-sm text-gray-600">
+                    找到 <span className="font-mono font-medium">{searchRes.total}</span> 道
+                    {searchRes.truncated && <span className="text-gray-400">（仅显示前 300 条）</span>}
+                  </p>
+                  {searchRes.total === 0 ? (
+                    <Empty title="没有匹配的题目" hint="换个关键词试试，或清除题型筛选。" />
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {searchRes.items.map((h) => (
+                        <li key={h.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              api
+                                .getQuestion(bank, h.id)
+                                .then((full) => {
+                                  setSearchOpen(full)
+                                  resetRun()
+                                  window.scrollTo({ top: 0 })
+                                })
+                                .catch(() => {})
+                            }}
+                            className="group w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors duration-150 hover:bg-[#efedea] active:bg-[#e3e1db]"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="n-handle text-gray-300">
+                                <Icon name="grip" className="h-3.5 w-3.5" />
+                              </span>
+                              <Tag tone="gray">{h.partName}</Tag>
+                              <Tag tone="gray">{h.secName}</Tag>
+                              {h.where === 'option' && <Tag tone="yellow">选项命中</Tag>}
+                              <span className="ml-auto font-mono text-xs text-gray-400">ID {h.id}</span>
+                            </div>
+                            <p className="mt-1.5 line-clamp-2 text-sm text-[#37352f]">{h.stem}</p>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+
+              {!searching && !searchRes && (
+                <Empty title="输入关键词开始搜索" hint="支持题干与选项全文匹配，回车即搜。" />
+              )}
+            </div>
+          )}
+
+          {/* 搜索命中 → 单题查看 */}
+          {mode === 'search' && searchOpen && (
+            <div className="mt-4 space-y-3">
+              <button
+                type="button"
+                onClick={() => setSearchOpen(null)}
+                className="n-btn flex items-center gap-1 px-2"
+              >
+                <Icon name="chevronLeft" className="h-3.5 w-3.5" />
+                返回搜索结果
+              </button>
+              <RunView
+                items={items}
+                idx={0}
+                setIdx={() => {}}
+                picks={picks}
+                results={results}
+                marked={marked}
+                onPick={onPick}
+                onFill={onFill}
+                onSelf={onSelf}
+                onCheck={onCheck}
+                onToggleShow={onToggleShow}
+                onMark={onMark}
+              />
+            </div>
+          )}
+
           {/* ---------- 考试：选卷 ---------- */}
           {mode === 'exam' && !exam && (
             <div className="space-y-4">
@@ -716,6 +978,7 @@ export default function App() {
               picks={picks}
               results={results}
               marked={marked}
+              locked={locked}
               onPick={onPick}
               onFill={onFill}
               onSelf={onSelf}
@@ -744,33 +1007,65 @@ export default function App() {
                 </div>
               }
               footer={
-                <button
-                  type="button"
-                  disabled={examSubmitted}
-                  onClick={() => {
-                    const answered = Object.keys(results).length
-                    const ok = window.confirm(
-                      '确定交卷？\n\n已作答 ' + answered + ' / ' + items.length + '，未作答按 0 分计。',
-                    )
-                    if (!ok) return
-                    setExamSubmitted(true)
-                    api
-                      .postSession({
-                        bank,
-                        ver: exam.ver,
-                        group: exam.group,
+                examResult ? (
+                  <div className="rounded-md bg-gray-50 px-3 py-2.5 text-sm">
+                    <p className="mb-1 font-medium text-[#37352f]">
+                      {examResult.auto ? '时间到，已自动交卷' : '已交卷'}
+                    </p>
+                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-gray-600">
+                      <span>
+                        作答 <span className="font-mono">{examResult.answered}</span> / {examResult.total}
+                      </span>
+                      <span className="text-[#0f7b6c]">
+                        ✓ <span className="font-mono">{examResult.right}</span>
+                      </span>
+                      <span>
+                        得分{' '}
+                        <span className="font-mono font-medium text-[#37352f]">
+                          {examResult.score.toFixed(1)} / {examResult.full || '—'}
+                        </span>
+                      </span>
+                      <span className="text-gray-400">
+                        未作答 <span className="font-mono">{examResult.total - examResult.answered}</span> 题按 0 分计
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const answered = Object.keys(results).length
+                      const ok = window.confirm(
+                        '确定交卷？\n\n已作答 ' + answered + ' / ' + items.length + '，未作答按 0 分计。',
+                      )
+                      if (!ok) return
+                      setExamSubmitted(true)
+                      setExamResult({
                         total: items.length,
                         answered,
                         right: runStats.right,
                         score: runStats.score,
                         full: runStats.full,
+                        auto: false,
                       })
-                      .catch(() => {})
-                  }}
-                  className="rounded-md bg-[#2eaadc] px-3 py-1.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#2898c4] active:bg-[#2388b0] disabled:opacity-40"
-                >
-                  {examSubmitted ? '已交卷' : '交卷'}
-                </button>
+                      api
+                        .postSession({
+                          bank,
+                          ver: exam.ver,
+                          group: exam.group,
+                          total: items.length,
+                          answered,
+                          right: runStats.right,
+                          score: runStats.score,
+                          full: runStats.full,
+                        })
+                        .catch(() => {})
+                    }}
+                    className="rounded-md bg-[#2eaadc] px-3 py-1.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#2898c4] active:bg-[#2388b0]"
+                  >
+                    交卷
+                  </button>
+                )
               }
             />
           )}

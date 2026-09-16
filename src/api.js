@@ -16,6 +16,19 @@ function qs(params) {
 }
 
 export const getBanks = () => fetch('/api/banks').then(j)
+export const getProgress = (bank) => fetch('/api/progress' + (bank ? '?bank=' + bank : '')).then(j)
+export const getMarked = (bank) => fetch('/api/marked/' + bank).then(j)
+export const getQuestion = (bank, id) => fetch('/api/questions/' + bank + '/' + id).then(j)
+export const search = (bank, q, kind) =>
+  fetch('/api/search/' + bank + '?' + qs({ q, kind })).then(j)
+export const postMark = (id, on) =>
+  fetch('/api/mark', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, on }),
+  }).then(j)
+export const getBackups = () => fetch('/api/backups').then(j)
+export const postBackup = () => fetch('/api/backup', { method: 'POST' }).then(j)
 export const getStats = (bank) => fetch('/api/stats/' + bank).then(j)
 export const getWrong = (bank) => fetch('/api/wrong/' + bank).then(j)
 export const getPapers = (bank) => fetch('/api/papers/' + bank).then(j)
