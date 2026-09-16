@@ -1,11 +1,32 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { LETTERS, correctLetters, KIND_LABEL } from './grading'
 import { RichText, Tag, Verdict, Icon } from './components.jsx'
 
 export default function QuestionCard({
   item, index, total, pick, result, locked = false,
   onPick, onFill, onSelf, onCheck, onToggleShow, marked, onMark,
+  note = '', onNote,
 }) {
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [draft, setDraft] = useState(note || '')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    setDraft(note || '')
+    setNoteOpen(false)
+    setCopied(false)
+  }, [item.id, note])
+
+  const copyLink = () => {
+    const url = location.origin + '/?q=' + item.id
+    const done = () => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done).catch(() => {})
+    else done()
+  }
+
   const cor = correctLetters(item)
   const checked = !!result
   const showExp = result?.revealed
@@ -50,6 +71,15 @@ export default function QuestionCard({
               <Icon name="flag" className="h-3.5 w-3.5" />
             </button>
           )}
+          <button
+            type="button"
+            onClick={copyLink}
+            aria-label="复制本题链接"
+            title="复制本题链接"
+            className="n-btn -my-1 px-1.5 py-1 text-[11px] text-gray-300"
+          >
+            {copied ? '已复制' : <Icon name="link" className="h-3.5 w-3.5" />}
+          </button>
         </span>
       </header>
 
@@ -309,6 +339,54 @@ export default function QuestionCard({
               {showExp ? '隐藏解析' : '查看解析'}
             </button>
           )}
+        </div>
+      )}
+
+      {/* 我的笔记 */}
+      {onNote && (
+        <div className="mt-4 border-t border-gray-200 pt-3">
+          <button
+            type="button"
+            onClick={() => setNoteOpen((v) => !v)}
+            className="n-btn px-0 text-xs text-[#2eaadc] hover:bg-transparent hover:underline"
+          >
+            {note ? '我的笔记（已记录）' : '添加笔记'}
+          </button>
+          {noteOpen && (
+            <div className="mt-2">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={3}
+                placeholder="写下你的理解、易错点…"
+                className="n-input w-full px-3 py-2 text-sm"
+              />
+              <div className="mt-1.5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNote(draft.trim())
+                    setNoteOpen(false)
+                  }}
+                  className="rounded-md bg-[#2eaadc] px-3 py-1 text-xs font-medium text-white hover:bg-[#2898c4]"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft('')
+                    onNote('')
+                    setNoteOpen(false)
+                  }}
+                  className="n-btn border border-gray-200 px-3 py-1 text-xs text-gray-600"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          )}
+          {!noteOpen && note && <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">{note}</p>}
         </div>
       )}
     </article>

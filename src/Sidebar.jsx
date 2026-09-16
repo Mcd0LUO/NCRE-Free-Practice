@@ -148,6 +148,7 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
     { id: 'exam', label: '模拟考试', icon: 'clock', hint: '限时成套做卷' },
     { id: 'wrong', label: '错题本', icon: 'target', hint: '只刷做错的题' },
     { id: 'marked', label: '标记题', icon: 'flag', hint: '我标记待复习的题' },
+    { id: 'notes', label: '我的笔记', icon: 'edit', hint: '带笔记的题目' },
     { id: 'records', label: '成绩记录', icon: 'clock', hint: '历史考试与每日统计' },
     { id: 'search', label: '全局搜索', icon: 'search', hint: '按关键词搜题干与选项' },
   ]

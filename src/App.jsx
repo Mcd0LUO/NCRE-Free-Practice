@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Sidebar from './Sidebar.jsx'
 import CategoryTree from './CategoryTree.jsx'
 import RunView from './RunView.jsx'
-import { Tag, ProgressBar, Icon, Loading, Empty } from './components.jsx'
+import { Tag, ProgressBar, Icon, Loading, Empty, Highlight } from './components.jsx'
 import { grade, KIND_LABEL } from './grading'
 import * as api from './api.js'
 import Login from './Login.jsx'
@@ -67,6 +67,11 @@ export default function App() {
   const [randomSmart, setRandomSmart] = useState(true)
   const [randomLoading, setRandomLoading] = useState(false)
 
+  // 笔记 / 单题聚焦（?q= 直达、笔记跳转）
+  const [notes, setNotes] = useState({})
+  const [notesList, setNotesList] = useState(null)
+  const [focusItem, setFocusItem] = useState(null)
+
   // 解析懒加载：id -> 完整题目（仅含被展开过解析的题）
   const [details, setDetails] = useState({})
 
@@ -77,6 +82,17 @@ export default function App() {
   const [searching, setSearching] = useState(false)
   // 搜索结果里点开某题时，用它承载题目对象
   const [searchOpen, setSearchOpen] = useState(null)
+  const [searchPart, setSearchPart] = useState(0)
+  // 搜索结果按分类过滤 + 关键词高亮
+  const searchParts = useMemo(() => {
+    const m = new Map()
+    for (const h of searchRes?.items || []) m.set(h.part, h.partName)
+    return [...m.entries()]
+  }, [searchRes])
+  const searchItems = useMemo(() => {
+    const items = searchRes?.items || []
+    return searchPart ? items.filter((h) => h.part === searchPart) : items
+  }, [searchRes, searchPart])
 
   const reqId = useRef(0)
 
@@ -97,6 +113,19 @@ export default function App() {
       setBanks(b)
       setBank(b[0]?.id ?? null)
     })
+  }, [authed])
+
+  // ?q=<id> 题目直达链接
+  useEffect(() => {
+    if (!authed) return
+    const q = new URLSearchParams(location.search).get('q')
+    if (!q) return
+    api
+      .getById(q)
+      .then((it) => {
+        if (it && it.id != null) setFocusItem(it)
+      })
+      .catch(() => {})
   }, [authed])
 
   const refreshStats = useCallback(() => {
@@ -138,6 +167,9 @@ export default function App() {
         setResults(nextResults)
         setPicks(nextPicks)
         setMarked(new Set(Object.keys(p.marks || {}).map(Number)))
+        const nextNotes = {}
+        for (const [id, n] of Object.entries(p.notes || {})) nextNotes[+id] = n.text
+        setNotes(nextNotes)
         setHydrated(true)
       })
       .catch(() => {
@@ -212,6 +244,13 @@ export default function App() {
       setFreshIds(new Set(r.items.map((x) => x.id)))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, bank])
+
+  // ---------- 笔记列表 ----------
+  useEffect(() => {
+    if (mode !== 'notes' || !bank) return
+    setNotesList(null)
+    api.getNotes(bank).then((r) => setNotesList(r.items)).catch(() => setNotesList([]))
   }, [mode, bank])
 
   // ---------- 标记题 ----------
@@ -600,6 +639,16 @@ export default function App() {
   const sectionsOf = (partId) => sections.filter((s) => s.part === +partId)
 
   // 清空进度（本级别 / 全部）：服务端权威数据 + 本地镜像一起清
+  const saveNote = useCallback((id, text) => {
+    setNotes((n) => {
+      const m = { ...n }
+      if (text && text.trim()) m[id] = text
+      else delete m[id]
+      return m
+    })
+    api.postNote(id, text || '').catch(() => {})
+  }, [])
+
   const doReset = useCallback(
     (scope) => {
       const body = scope === 'bank' ? { bank, scope } : { scope }
@@ -793,6 +842,44 @@ export default function App() {
           )}
 
           <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-32 md:px-6">
+          {/* 单题聚焦：?q= 直达 / 笔记跳转 */}
+          {focusItem && (
+            <section className="mb-5">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFocusItem(null)
+                    if (location.search.includes('q=')) history.replaceState({}, '', location.pathname)
+                  }}
+                  className="n-btn flex items-center gap-1 border border-gray-200 px-2"
+                >
+                  <Icon name="close" className="h-3.5 w-3.5" />
+                  关闭
+                </button>
+                {focusItem.secName && <Tag tone="gray">{focusItem.secName}</Tag>}
+                <span className="font-mono text-xs text-gray-400">ID {focusItem.id}</span>
+              </div>
+              <RunView
+                items={[focusItem]}
+                idx={0}
+                setIdx={() => {}}
+                picks={picks}
+                results={displayResults}
+              notes={notes}
+              onNote={saveNote}
+                marked={marked}
+                details={details}
+                onPick={onPick}
+                onFill={onFill}
+                onSelf={onSelf}
+                onCheck={onCheck}
+                onToggleShow={onToggleShow}
+                onMark={onMark}
+              />
+            </section>
+          )}
+
           {/* 总览 */}
           {stats && mode !== 'exam' && !(mode === 'category' && sel) && (
             <section className="mb-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -932,6 +1019,8 @@ export default function App() {
                   setIdx={setIdx}
                   picks={picks}
                   results={displayResults}
+              notes={notes}
+              onNote={saveNote}
                   marked={marked}
                   details={details}
                   onPick={onPick}
@@ -1002,6 +1091,53 @@ export default function App() {
             </>
           )}
 
+          {/* ---------- 我的笔记 ---------- */}
+          {mode === 'notes' && (
+            <div className="space-y-4">
+              <div>
+                <h1 className="text-xl font-semibold text-[#37352f] md:text-2xl">我的笔记</h1>
+                <p className="mt-1 text-sm text-gray-600">带笔记的题目，点击可直达。</p>
+              </div>
+              {notesList === null ? (
+                <Loading text="读取笔记…" />
+              ) : !notesList.length ? (
+                <Empty title="还没有笔记" hint="做题时在题目下方「添加笔记」即可记录。" />
+              ) : (
+                <ul className="space-y-1.5">
+                  {notesList.map((n) => (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          api
+                            .getById(n.id)
+                            .then((it) => {
+                              if (it && it.id != null) {
+                                setFocusItem(it)
+                                window.scrollTo({ top: 0, behavior: 'smooth' })
+                              }
+                            })
+                            .catch(() => {})
+                        }
+                        className="group w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors duration-150 hover:bg-[#efedea]"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Tag tone="blue">{KIND_LABEL[n.kind] || n.kind}</Tag>
+                          <Tag tone="gray">{n.secName}</Tag>
+                          <span className="ml-auto font-mono text-xs text-gray-400">ID {n.id}</span>
+                        </div>
+                        <p className="mt-1.5 line-clamp-2 text-sm text-[#37352f]">{n.stem}</p>
+                        <p className="mt-1 whitespace-pre-wrap rounded bg-yellow-50 px-2 py-1 text-xs text-gray-600">
+                          {n.note}
+                        </p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {/* ---------- 成绩记录 ---------- */}
           {mode === 'records' && <Records bank={bank} />}
 
@@ -1066,6 +1202,8 @@ export default function App() {
               setIdx={setIdx}
               picks={picks}
               results={displayResults}
+              notes={notes}
+              onNote={saveNote}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -1106,6 +1244,8 @@ export default function App() {
               setIdx={setIdx}
               picks={picks}
               results={displayResults}
+              notes={notes}
+              onNote={saveNote}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -1156,6 +1296,8 @@ export default function App() {
               setIdx={setIdx}
               picks={picks}
               results={displayResults}
+              notes={notes}
+              onNote={saveNote}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -1219,12 +1361,28 @@ export default function App() {
                   <p className="text-sm text-gray-600">
                     找到 <span className="font-mono font-medium">{searchRes.total}</span> 道
                     {searchRes.truncated && <span className="text-gray-400">（仅显示前 300 条）</span>}
+                    {searchPart ? <span className="text-gray-400">（当前分类 {searchItems.length} 道）</span> : null}
                   </p>
+                  {searchParts.length > 1 && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      分类
+                      <select
+                        value={searchPart}
+                        onChange={(e) => setSearchPart(+e.target.value)}
+                        className="n-input px-2 py-1.5 text-sm"
+                      >
+                        <option value={0}>全部</option>
+                        {searchParts.map(([id, name]) => (
+                          <option key={id} value={id}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   {searchRes.total === 0 ? (
                     <Empty title="没有匹配的题目" hint="换个关键词试试，或清除题型筛选。" />
                   ) : (
                     <ul className="space-y-1.5">
-                      {searchRes.items.map((h) => (
+                      {searchItems.map((h) => (
                         <li key={h.id}>
                           <button
                             type="button"
@@ -1250,7 +1408,9 @@ export default function App() {
                               {h.where === 'option' && <Tag tone="yellow">选项命中</Tag>}
                               <span className="ml-auto font-mono text-xs text-gray-400">ID {h.id}</span>
                             </div>
-                            <p className="mt-1.5 line-clamp-2 text-sm text-[#37352f]">{h.stem}</p>
+                            <p className="mt-1.5 line-clamp-2 text-sm text-[#37352f]">
+                              <Highlight text={h.stem} term={searchQ} />
+                            </p>
                           </button>
                         </li>
                       ))}
@@ -1282,6 +1442,8 @@ export default function App() {
                 setIdx={() => {}}
                 picks={picks}
                 results={displayResults}
+              notes={notes}
+              onNote={saveNote}
                 marked={marked}
                 details={details}
                 onPick={onPick}
@@ -1379,6 +1541,8 @@ export default function App() {
               setIdx={setIdx}
               picks={picks}
               results={displayResults}
+              notes={notes}
+              onNote={saveNote}
               marked={marked}
               details={details}
               locked={locked}

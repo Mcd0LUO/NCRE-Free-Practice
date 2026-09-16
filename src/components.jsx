@@ -117,6 +117,7 @@ export function Icon({ name, className = 'h-4 w-4' }) {
       </>
     ),
     flag: <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22V15" />,
+    link: <path d="M10 13a5 5 0 007.5.5l2-2a5 5 0 00-7-7l-1 1M14 11a5 5 0 00-7.5-.5l-2 2a5 5 0 007 7l1-1" />,
   }
   return (
     <svg
@@ -148,4 +149,29 @@ export function Empty({ title, hint, action }) {
 // 加载态：纯文本，不引入旋转动画装饰
 export function Loading({ text = '加载中…' }) {
   return <div className="rounded-lg border border-gray-200 bg-white px-6 py-14 text-center text-sm text-gray-400 shadow-sm">{text}</div>
+}
+
+// 关键词高亮：把命中片段包成 <mark>（大小写不敏感）
+export function Highlight({ text, term, className = '' }) {
+  const s = String(text == null ? '' : text)
+  const t = String(term == null ? '' : term).trim()
+  if (!t) return <span className={className}>{s}</span>
+  const low = s.toLowerCase()
+  const lt = t.toLowerCase()
+  const out = []
+  let i = 0
+  let k = 0
+  let idx = low.indexOf(lt)
+  while (idx >= 0 && out.length < 200) {
+    if (idx > i) out.push(s.slice(i, idx))
+    out.push(
+      <mark key={k++} className="rounded bg-yellow-100 px-0.5 text-inherit">
+        {s.slice(idx, idx + t.length)}
+      </mark>,
+    )
+    i = idx + t.length
+    idx = low.indexOf(lt, i)
+  }
+  out.push(s.slice(i))
+  return <span className={className}>{out}</span>
 }
