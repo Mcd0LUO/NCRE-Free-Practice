@@ -1,0 +1,19 @@
+# 依赖
+node_modules/
+
+# 构建产物（可用 npm run build 重新生成）
+dist/
+
+# 运行期状态：个人进度，频繁变动，且属于本机数据
+server/progress.json
+server/progress.json.tmp
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+
+# 备份目录（由备份接口生成）
+backups/

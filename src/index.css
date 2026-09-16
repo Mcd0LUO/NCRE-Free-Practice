@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-[#f7f6f3] text-[#37352f];
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif;
+  }
+  /* 键盘可达性：统一的 focus ring，不改变布局 */
+  :focus-visible {
+    @apply outline-none ring-2 ring-blue-500/30;
+  }
+}
+
+@layer components {
+  /* Notion Block Highlighting —— 极低信噪比悬停反馈 */
+  .n-hover {
+    @apply transition-colors duration-150 hover:bg-[#efedea] active:bg-[#e3e1db];
+  }
+  /* 拖拽手柄：Notion 标志性 UX，仅 hover 时显现 */
+  .n-handle {
+    @apply opacity-0 transition-opacity duration-150 group-hover:opacity-100;
+  }
+  .n-card {
+    @apply rounded-lg border border-gray-200 bg-white shadow-sm;
+  }
+  .n-btn {
+    @apply rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150
+           hover:bg-[#efedea] active:bg-[#e3e1db] disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .n-input {
+    @apply rounded-md border border-gray-200 bg-white text-gray-900 placeholder-gray-400
+           transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500;
+  }
+}
+
+/* 尊重 reduced-motion：关闭一切过渡，保留即时状态切换 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* 窄屏下正文行宽约束，避免超长行 */
+.n-measure {
+  max-width: 68ch;
+}
