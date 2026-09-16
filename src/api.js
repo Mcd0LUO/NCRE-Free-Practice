@@ -64,6 +64,15 @@ export const postReset = (body) =>
     body: JSON.stringify(body),
   }).then(j)
 
+export const getExam = () => fetch('/api/exam').then(j)
+export const postExam = (body) =>
+  fetch('/api/exam', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(j)
+export const delExam = () => fetch('/api/exam', { method: 'DELETE' }).then(j)
+
 export const postSession = (body) =>
   fetch('/api/session', {
     method: 'POST',

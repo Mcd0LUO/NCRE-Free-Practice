@@ -41,7 +41,7 @@ console.log('[server] banks:', Object.keys(banks).map(k =>
   k + '=' + banks[k].name + '(' + banks[k].questionIds.length + '题)').join(', '))
 
 // ---------- progress store (single user, flat file) ----------
-let progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {} }
+let progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exam: null }
 try {
   if (fs.existsSync(PROG)) progress = { ...progress, ...JSON.parse(fs.readFileSync(PROG, 'utf8')) }
 } catch (e) { console.warn('[server] progress reset:', e.message) }
@@ -364,9 +364,15 @@ app.post('/api/answer', (req, res) => {
 })
 
 app.post('/api/reset', (req, res) => {
-  const { bank, scope } = req.body || {}
+  const { bank, scope, ids } = req.body || {}
   if (scope === 'all') {
-    progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {} }
+    progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exam: null }
+  } else if (scope === 'items') {
+    // 只清掉指定题目（用于「重置本场考试」），不影响其它进度
+    for (const id of Array.isArray(ids) ? ids : []) {
+      delete progress.answers[id]
+      delete progress.wrong[id]
+    }
   } else if (scope === 'bank') {
     const map = byId[bank]
     if (map) {
@@ -390,6 +396,33 @@ app.post('/api/mark', (req, res) => {
 app.post('/api/session', (req, res) => {
   progress.sessions.push({ ...req.body, t: Date.now() })
   if (progress.sessions.length > 200) progress.sessions = progress.sessions.slice(-200)
+  saveProgress()
+  res.json({ ok: true })
+})
+
+// ---------- 考试进行中状态（刷新 / 换设备可续考） ----------
+app.get('/api/exam', (req, res) => res.json(progress.exam || null))
+
+app.post('/api/exam', (req, res) => {
+  const { bank, ver, group, left, picks, startedAt } = req.body || {}
+  if (!bank || ver == null || group == null) {
+    return res.status(400).json({ error: 'bank, ver, group required' })
+  }
+  progress.exam = {
+    bank,
+    ver: +ver,
+    group: +group,
+    left: Number.isFinite(+left) ? Math.max(0, Math.round(+left)) : null,
+    picks: picks && typeof picks === 'object' ? picks : {},
+    startedAt: startedAt || Date.now(),
+    t: Date.now(),
+  }
+  saveProgress()
+  res.json({ ok: true, exam: progress.exam })
+})
+
+app.delete('/api/exam', (req, res) => {
+  progress.exam = null
   saveProgress()
   res.json({ ok: true })
 })

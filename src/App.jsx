@@ -28,6 +28,9 @@ export default function App() {
   const [idx, setIdx] = useState(0)
   const [picks, setPicks] = useState({})
   const [results, setResults] = useState({})
+  // 本轮仍需重刷的题 id（错题本 / 标记题 / 考试）：即使服务端已有作答记录，
+  // 也从展示层隐藏，允许重新作答；一旦作答即从集合移除。
+  const [freshIds, setFreshIds] = useState(() => new Set())
   const [marked, setMarked] = useState(() => new Set())
   const [hydrated, setHydrated] = useState(false)
   // 题目 id -> 题目对象，供水合时补全分值；避免为每道已答题单独请求
@@ -39,7 +42,11 @@ export default function App() {
   const [examLeft, setExamLeft] = useState(0)
   const [examSubmitted, setExamSubmitted] = useState(false)
   const [examResult, setExamResult] = useState(null)
+  // 服务端保存的「进行中考试」：刷新 / 换设备后续考
+  const [savedExam, setSavedExam] = useState(null)
   const runStatsRef = useRef({ done: 0, right: 0, score: 0, full: 0 })
+  const examLeftRef = useRef(0)
+  const picksRef = useRef({})
 
   // 错题本
   const [wrong, setWrong] = useState(null)
@@ -117,11 +124,22 @@ export default function App() {
     }
   }, [bank])
 
+  // 只重置浏览位置。已答记录（results/picks）是服务端水合出来的权威镜像，
+  // 绝不能在这里清空 —— 否则进入分类/切换模式时会把刚恢复的作答状态抹掉，
+  // 这正是「答完题刷新后进度消失」的根因。
   const resetRun = useCallback(() => {
     setIdx(0)
-    setPicks({})
-    setResults({})
   }, [])
+
+  // 展示层结果 = 已答记录 − 本轮要重刷的题。
+  const displayResults = useMemo(() => {
+    if (!freshIds.size) return results
+    const out = {}
+    for (const [id, r] of Object.entries(results)) {
+      if (!freshIds.has(+id)) out[id] = r
+    }
+    return out
+  }, [results, freshIds])
 
   // ---------- 分类：加载题目 ----------
   const loadCategory = useCallback(
@@ -151,6 +169,7 @@ export default function App() {
   useEffect(() => {
     if (mode !== 'category' || !sel) return
     resetRun()
+    setFreshIds(new Set())
     loadCategory(sel, kindFilter, 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, bank, sel, kindFilter])
@@ -163,7 +182,10 @@ export default function App() {
     if (mode !== 'wrong' || !bank) return
     resetRun()
     setWrong(null)
-    api.getWrong(bank).then((r) => setWrong(r.items))
+    api.getWrong(bank).then((r) => {
+      setWrong(r.items)
+      setFreshIds(new Set(r.items.map((x) => x.id)))
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, bank])
 
@@ -173,7 +195,10 @@ export default function App() {
     if (mode !== 'marked' || !bank) return
     resetRun()
     setMarkedList(null)
-    api.getMarked(bank).then((r) => setMarkedList(r.items))
+    api.getMarked(bank).then((r) => {
+      setMarkedList(r.items)
+      setFreshIds(new Set(r.items.map((x) => x.id)))
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, bank])
 
@@ -203,17 +228,44 @@ export default function App() {
     api.getPapers(bank).then(setPaperList)
   }, [mode, bank])
 
+  // 进入考试模式时，读取服务端是否有一场未完成的考试（用于续考提示）
+  useEffect(() => {
+    if (mode !== 'exam' || !bank) return
+    let alive = true
+    api
+      .getExam()
+      .then((e) => {
+        if (alive) setSavedExam(e && String(e.bank) === String(bank) ? e : null)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [mode, bank])
+
   useEffect(() => {
     if (!exam || examSubmitted) return
     const t = setInterval(() => setExamLeft((v) => (v <= 0 ? 0 : v - 1)), 1000)
     return () => clearInterval(t)
   }, [exam, examSubmitted])
 
+  // 当前题目集合（分类 / 错题 / 标记 / 考试 / 搜索）。
+  // 必须定义在依赖它的 effect 之前：依赖数组会在 render 期求值，
+  // 放到后面会让下面的自动交卷 effect 触发 TDZ（Cannot access 'items' before initialization）。
+  const items = useMemo(() => {
+    if (mode === 'category') return list ?? EMPTY
+    if (mode === 'wrong') return wrong ?? EMPTY
+    if (mode === 'marked') return markedList ?? EMPTY
+    if (mode === 'exam') return exam?.items ?? EMPTY
+    if (mode === 'search') return searchOpen ? [searchOpen] : EMPTY
+    return EMPTY
+  }, [mode, list, wrong, markedList, exam, searchOpen])
+
   // A2: 倒计时归零自动交卷（此前只显示「时间到」，并不会真正收卷）
   useEffect(() => {
     if (!exam || examSubmitted || examLeft > 0) return
     setExamSubmitted(true)
-    const answered = Object.keys(results).length
+    const answered = items.reduce((n, it) => n + (displayResults[it.id] ? 1 : 0), 0)
     api
       .postSession({
         bank,
@@ -227,6 +279,8 @@ export default function App() {
         auto: true,
       })
       .catch(() => {})
+    api.delExam().catch(() => {})
+    setSavedExam(null)
     setExamResult({
       total: exam.items.length,
       answered,
@@ -235,27 +289,54 @@ export default function App() {
       full: runStatsRef.current.full,
       auto: true,
     })
-  }, [exam, examSubmitted, examLeft, bank, results])
+  }, [exam, examSubmitted, examLeft, bank, displayResults, items])
 
-  const loadPaper = async (ver, group) => {
+  // 考试进行中：周期性把剩余时间与当前选择写回服务端，刷新 / 换设备即可续考
+  useEffect(() => {
+    if (mode !== 'exam' || !exam || examSubmitted) return
+    const save = () =>
+      api
+        .postExam({
+          bank,
+          ver: exam.ver,
+          group: exam.group,
+          left: examLeftRef.current,
+          picks: picksRef.current,
+          startedAt: exam.startedAt,
+        })
+        .catch(() => {})
+    const t = setTimeout(save, 1200)
+    const iv = setInterval(save, 15000)
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') save()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      clearTimeout(t)
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [mode, exam, examSubmitted, bank])
+
+  const loadPaper = async (ver, group, resume = null) => {
     const p = await api.getPaper(bank, ver, group)
+    const flat = p.sections.flatMap((s) => s.items)
+    const total = (banks.find((b) => b.id === bank)?.timeMin ?? 90) * 60
+    const left = resume && Number.isFinite(resume.left) ? resume.left : total
+    const startedAt = (resume && resume.startedAt) || Date.now()
+    const picks0 = (resume && resume.picks) || {}
     resetRun()
     setExamSubmitted(false)
     setExamResult(null)
-    setExam({ ...p, items: p.sections.flatMap((s) => s.items) })
-    setExamLeft((banks.find((b) => b.id === bank)?.timeMin ?? 90) * 60)
+    setPicks(picks0)
+    setFreshIds(new Set(flat.map((x) => x.id)))
+    setExam({ ...p, items: flat, startedAt })
+    setExamLeft(left)
+    api
+      .postExam({ bank, ver: p.ver, group: p.group, left, picks: picks0, startedAt })
+      .catch(() => {})
     window.scrollTo({ top: 0 })
   }
-
-  // ---------- 作答 ----------
-  const items = useMemo(() => {
-    if (mode === 'category') return list ?? EMPTY
-    if (mode === 'wrong') return wrong ?? EMPTY
-    if (mode === 'marked') return markedList ?? EMPTY
-    if (mode === 'exam') return exam?.items ?? EMPTY
-    if (mode === 'search') return searchOpen ? [searchOpen] : EMPTY
-    return EMPTY
-  }, [mode, list, wrong, markedList, exam, searchOpen])
 
   // 刷新题目集合的 id 索引
   useEffect(() => {
@@ -270,7 +351,7 @@ export default function App() {
   // 原先只在 onToggleShow 里取，但判分时 revealed 已置 true，用户不会再点按钮，
   // 导致解析区块展开却是空的。
   const curId = item?.id
-  const curRevealed = curId != null ? !!results[curId]?.revealed : false
+  const curRevealed = curId != null ? !!displayResults[curId]?.revealed : false
   useEffect(() => {
     if (curId == null || !curRevealed) return
     if (details[curId]) return // 已取过（解析本身可能为空，也算取过）
@@ -290,6 +371,13 @@ export default function App() {
     async (r) => {
       if (!item) return
       setResults((s) => ({ ...s, [item.id]: { ...r, revealed: true } }))
+      // 本题已重新作答 → 取消「待重刷」标记，结果立即展示
+      setFreshIds((prev) => {
+        if (!prev.has(item.id)) return prev
+        const n = new Set(prev)
+        n.delete(item.id)
+        return n
+      })
       // 错题本模式下答对：立即从列表移除，给出即时反馈
       if (mode === 'wrong' && r.state === 'ok') {
         setWrong((list) => (list || []).filter((x) => x.id !== item.id))
@@ -318,7 +406,7 @@ export default function App() {
   const locked = mode === 'exam' && examSubmitted
 
   const onCheck = useCallback(() => {
-    if (!item || results[item.id] || locked) return
+    if (!item || displayResults[item.id] || locked) return
     const r = grade(item, picks[item.id])
     if (r.state === 'none') {
       if (!window.confirm('还没有作答，直接看答案吗？')) return
@@ -326,18 +414,18 @@ export default function App() {
       return
     }
     submit(r)
-  }, [item, picks, results, submit, locked])
+  }, [item, picks, displayResults, submit, locked])
 
   const onPick = useCallback(
     (L) => {
-      if (!item || results[item.id] || locked) return
+      if (!item || displayResults[item.id] || locked) return
       const cur = picks[item.id]?.letters || ''
       let next
       if (item.kind === 'single') next = cur === L ? '' : L
       else next = (cur.includes(L) ? cur.replace(L, '') : cur + L).split('').sort().join('')
       setPicks((s) => ({ ...s, [item.id]: { ...s[item.id], letters: next } }))
     },
-    [item, picks, results, locked],
+    [item, picks, displayResults, locked],
   )
 
   const onFill = useCallback(
@@ -404,7 +492,7 @@ export default function App() {
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
         if (e.key === 'Enter' && tag === 'INPUT') {
           e.preventDefault()
-          if (item && !results[item.id]) onCheck()
+          if (item && !displayResults[item.id]) onCheck()
           else go(1)
         }
         return
@@ -413,7 +501,7 @@ export default function App() {
       if (e.key === 'ArrowRight') return go(1)
       if (e.key === 'Enter') {
         e.preventDefault()
-        if (item && !results[item.id]) onCheck()
+        if (item && !displayResults[item.id]) onCheck()
         else go(1)
         return
       }
@@ -424,15 +512,18 @@ export default function App() {
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [item, results, onCheck, go, onPick])
+  }, [item, displayResults, onCheck, go, onPick])
 
   // ---------- 派生 ----------
+  // 统计只针对「当前题目集合」（分类 / 错题 / 标记 / 考试），
+  // 否则会把整个题库的历史作答都算进来。
   const runStats = useMemo(() => {
     let done = 0
     let right = 0
     let score = 0
     let full = 0
-    for (const r of Object.values(results)) {
+    for (const it of items) {
+      const r = displayResults[it.id]
       if (!r) continue
       done++
       score += r.score || 0
@@ -440,14 +531,37 @@ export default function App() {
       if (r.state === 'ok') right++
     }
     return { done, right, score, full }
-  }, [results])
+  }, [items, displayResults])
 
   runStatsRef.current = runStats
+  examLeftRef.current = examLeft
+  picksRef.current = picks
 
   const currentBank = banks.find((b) => b.id === bank)
   const sections = stats?.sections || []
   const parts = stats?.parts || []
   const sectionsOf = (partId) => sections.filter((s) => s.part === +partId)
+
+  // 清空进度（本级别 / 全部）：服务端权威数据 + 本地镜像一起清
+  const doReset = useCallback(
+    (scope) => {
+      const body = scope === 'bank' ? { bank, scope } : { scope }
+      api
+        .postReset(body)
+        .then(() => {
+          setResults({})
+          setPicks({})
+          setFreshIds(new Set())
+          setWrong(null)
+          setMarked(new Set())
+          setMarkedList(null)
+          setSavedExam(null)
+          refreshStats()
+        })
+        .catch(() => {})
+    },
+    [bank, refreshStats],
+  )
 
   const switchBank = (id) => {
     setBank(id)
@@ -455,6 +569,7 @@ export default function App() {
     setExam(null)
     setList(null)
     setWrong(null)
+    setFreshIds(new Set())
     resetRun()
   }
 
@@ -494,6 +609,7 @@ export default function App() {
           setSel(null)
           setSidebar(false)
           setSearchOpen(null)
+          setFreshIds(new Set())
           resetRun()
         }}
         stats={stats}
@@ -501,6 +617,7 @@ export default function App() {
         markedCount={marked.size}
         open={sidebar}
         onClose={() => setSidebar(false)}
+        onReset={doReset}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -604,7 +721,7 @@ export default function App() {
             </>
           )}
 
-          <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24 md:px-6">
+          <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-32 md:px-6">
           {/* 总览 */}
           {stats && mode !== 'exam' && (
             <section className="mb-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -734,7 +851,7 @@ export default function App() {
                   idx={idx}
                   setIdx={setIdx}
                   picks={picks}
-                  results={results}
+                  results={displayResults}
                   marked={marked}
                   details={details}
                   onPick={onPick}
@@ -812,7 +929,7 @@ export default function App() {
               idx={idx}
               setIdx={setIdx}
               picks={picks}
-              results={results}
+              results={displayResults}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -833,7 +950,7 @@ export default function App() {
               idx={idx}
               setIdx={setIdx}
               picks={picks}
-              results={results}
+              results={displayResults}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -911,6 +1028,7 @@ export default function App() {
                                 .getQuestion(bank, h.id)
                                 .then((full) => {
                                   setSearchOpen(full)
+                                  setFreshIds(new Set())
                                   resetRun()
                                   window.scrollTo({ top: 0 })
                                 })
@@ -958,7 +1076,7 @@ export default function App() {
                 idx={0}
                 setIdx={() => {}}
                 picks={picks}
-                results={results}
+                results={displayResults}
                 marked={marked}
                 details={details}
                 onPick={onPick}
@@ -980,6 +1098,43 @@ export default function App() {
                   共 {paperList.length} 套，每套限时 {currentBank?.timeMin} 分钟。倒计时结束自动提醒交卷。
                 </p>
               </div>
+
+              {savedExam && (
+                <div className="rounded-lg border border-[#2eaadc]/40 bg-blue-50/60 p-3">
+                  <p className="text-sm text-[#37352f]">
+                    上次有一场未完成的考试：
+                    <span className="font-medium">
+                      {savedExam.ver} 第 {savedExam.group} 套
+                    </span>
+                    {Number.isFinite(savedExam.left) && (
+                      <span className="ml-2 font-mono text-xs text-gray-500">
+                        剩余 {String(Math.floor(savedExam.left / 60)).padStart(2, '0')}:
+                        {String(savedExam.left % 60).padStart(2, '0')}
+                      </span>
+                    )}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => loadPaper(savedExam.ver, savedExam.group, savedExam)}
+                      className="rounded-md bg-[#2eaadc] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#2898c4]"
+                    >
+                      继续考试
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        api.delExam().catch(() => {})
+                        setSavedExam(null)
+                      }}
+                      className="n-btn border border-gray-200 text-gray-600"
+                    >
+                      放弃
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {!paperList.length ? (
                 <Loading text="读取试卷列表…" />
               ) : (
@@ -1018,7 +1173,7 @@ export default function App() {
               idx={idx}
               setIdx={setIdx}
               picks={picks}
-              results={results}
+              results={displayResults}
               marked={marked}
               details={details}
               locked={locked}
@@ -1040,6 +1195,36 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (!window.confirm('重置本场考试？\n\n本套试卷已作答的记录会被清空，计时重新开始。')) return
+                      const ids = items.map((it) => it.id)
+                      api.postReset({ scope: 'items', ids }).catch(() => {})
+                      const total = (banks.find((b) => b.id === bank)?.timeMin ?? 90) * 60
+                      const startedAt = Date.now()
+                      setResults((s) => {
+                        const n = { ...s }
+                        for (const id of ids) delete n[id]
+                        return n
+                      })
+                      setPicks({})
+                      setFreshIds(new Set(ids))
+                      setExamSubmitted(false)
+                      setExamResult(null)
+                      setExamLeft(total)
+                      setExam((e) => (e ? { ...e, startedAt } : e))
+                      api
+                        .postExam({ bank, ver: exam.ver, group: exam.group, left: total, picks: {}, startedAt })
+                        .catch(() => {})
+                      refreshStats()
+                    }}
+                    className="n-btn px-2 text-gray-600"
+                  >
+                    重置本场
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      api.delExam().catch(() => {})
+                      setSavedExam(null)
                       setExam(null)
                       resetRun()
                     }}
@@ -1077,11 +1262,13 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      const answered = Object.keys(results).length
+                      const answered = items.reduce((n, it) => n + (displayResults[it.id] ? 1 : 0), 0)
                       const ok = window.confirm(
                         '确定交卷？\n\n已作答 ' + answered + ' / ' + items.length + '，未作答按 0 分计。',
                       )
                       if (!ok) return
+                      api.delExam().catch(() => {})
+                      setSavedExam(null)
                       setExamSubmitted(true)
                       setExamResult({
                         total: items.length,
@@ -1116,15 +1303,15 @@ export default function App() {
         </div>
       </div>
 
-      {/* 底部操作栏 */}
+      {/* 底部操作栏：n-safe-bottom 抬起，避开手机系统手势区 / 导航条 */}
       {item && (
-        <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white">
-          <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-2.5">
+        <footer className="n-safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white">
+          <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 pt-2 md:px-6">
             <button
               type="button"
               onClick={() => go(-1)}
               disabled={idx === 0}
-              className="n-btn flex items-center gap-1 border border-gray-200 px-2"
+              className="n-btn flex min-h-[44px] flex-1 items-center justify-center gap-1 border border-gray-200 px-3 md:flex-none"
             >
               <Icon name="chevronLeft" className="h-3.5 w-3.5" />
               上一题
@@ -1133,12 +1320,18 @@ export default function App() {
               type="button"
               onClick={() => go(1)}
               disabled={idx >= items.length - 1}
-              className="n-btn flex items-center gap-1 border border-gray-200 px-2"
+              className="n-btn flex min-h-[44px] flex-1 items-center justify-center gap-1 border border-gray-200 px-3 md:flex-none"
             >
               下一题
               <Icon name="chevronRight" className="h-3.5 w-3.5" />
             </button>
-            <span className="ml-auto font-mono text-xs text-gray-400">
+            <span className="ml-auto hidden font-mono text-xs text-gray-400 sm:inline">
+              已答 {runStats.done}
+              {runStats.full ? ' · ' + runStats.score.toFixed(1) + '/' + runStats.full.toFixed(1) : ''}
+            </span>
+          </div>
+          <div className="mx-auto max-w-3xl px-4 sm:hidden">
+            <span className="font-mono text-[11px] text-gray-400">
               已答 {runStats.done}
               {runStats.full ? ' · ' + runStats.score.toFixed(1) + '/' + runStats.full.toFixed(1) : ''}
             </span>

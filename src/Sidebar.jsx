@@ -34,8 +34,38 @@ function BackupRow() {
   )
 }
 
+// 进度重置：清空服务端保存的作答记录，不可撤销
+function ResetRow({ onReset }) {
+  const [msg, setMsg] = useState('')
+  const ask = (scope, label) => {
+    if (!window.confirm(label + '？\n\n会清除服务端保存的作答记录，且不可撤销。')) return
+    onReset(scope)
+    setMsg('已清空')
+    setTimeout(() => setMsg(''), 2500)
+  }
+  return (
+    <div className="mt-2 flex items-center gap-2 border-t border-gray-200 pt-2">
+      <button
+        type="button"
+        onClick={() => ask('bank', '清空本级别进度')}
+        className="n-btn px-1.5 py-0.5 text-[11px] text-gray-500"
+      >
+        清空本级别
+      </button>
+      <button
+        type="button"
+        onClick={() => ask('all', '清空全部进度')}
+        className="n-btn px-1.5 py-0.5 text-[11px] text-[#eb5757]"
+      >
+        清空全部
+      </button>
+      {msg && <span className="text-[11px] text-gray-400">{msg}</span>}
+    </div>
+  )
+}
+
 // 左侧固定侧边栏：米色背景 + 页面列表（Notion 文档结构）
-export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, open, onClose }) {
+export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, open, onClose, onReset }) {
   const modes = [
     { id: 'category', label: '分类练习', icon: 'list', hint: '按知识点逐类攻克' },
     { id: 'exam', label: '模拟考试', icon: 'clock', hint: '限时成套做卷' },
@@ -147,6 +177,7 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
               客观题正确率 {Math.round((stats.objective?.accuracy || 0) * 100)}%
             </p>
             <BackupRow />
+            <ResetRow onReset={onReset} />
           </div>
         )}
       </aside>
