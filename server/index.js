@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 5181
 
 const app = express()
 app.disable('x-powered-by') // 不暴露技术栈
+app.set('trust proxy', 'loopback') // 经 nginx 反代，req.ip 取 X-Forwarded-For
 app.use(compression()) // JSON 体积大，gzip 后约省 78-87%
 app.use(express.json({ limit: '4mb' }))
 
@@ -49,13 +50,37 @@ function readCookie (header, name) {
 }
 const isAuthed = (req) => !AUTH_ON || !!verifySession(readCookie(req.headers.cookie, COOKIE))
 
+// 登录失败限流：同 IP 15 分钟内超过 8 次失败即 429
+const LOGIN_MAX = 8
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
+const loginFails = new Map()
+function loginBlocked (ip) {
+  const rec = loginFails.get(ip)
+  if (!rec) return false
+  if (Date.now() > rec.until) { loginFails.delete(ip); return false }
+  return rec.count >= LOGIN_MAX
+}
+function noteLoginFail (ip) {
+  const rec = loginFails.get(ip) || { count: 0, until: 0 }
+  rec.count++
+  rec.until = Date.now() + LOGIN_WINDOW_MS
+  loginFails.set(ip, rec)
+  if (loginFails.size > 5000) loginFails.clear()
+}
+
 app.post('/api/login', (req, res) => {
+  const ip = req.ip || 'unknown'
+  if (loginBlocked(ip)) return res.status(429).json({ error: '尝试次数过多，请稍后再试' })
   const { username, password } = req.body || {}
   const okUser = typeof username === 'string' && username === AUTH_USER
   const okPass = typeof password === 'string' && AUTH_PASS.length > 0 &&
     password.length === AUTH_PASS.length &&
     crypto.timingSafeEqual(Buffer.from(password), Buffer.from(AUTH_PASS))
-  if (!okUser || !okPass) return res.status(401).json({ error: '用户名或密码错误' })
+  if (!okUser || !okPass) {
+    noteLoginFail(ip)
+    return res.status(401).json({ error: '用户名或密码错误' })
+  }
+  loginFails.delete(ip)
   res.setHeader('Set-Cookie', COOKIE + '=' + signSession(AUTH_USER) + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=' + Math.floor(SESSION_TTL_MS / 1000))
   res.json({ ok: true })
 })
@@ -106,17 +131,29 @@ console.log('[server] banks:', Object.keys(banks).map(k =>
   k + '=' + banks[k].name + '(' + banks[k].questionIds.length + '题)').join(', '))
 
 // ---------- progress store (single user, flat file) ----------
-let progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exam: null }
+let progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exams: [], notes: {} }
 try {
   if (fs.existsSync(PROG)) progress = { ...progress, ...JSON.parse(fs.readFileSync(PROG, 'utf8')) }
 } catch (e) { console.warn('[server] progress reset:', e.message) }
+// 字段兜底 + 旧版单场考试迁移到多场数组
+progress.answers ||= {}
+progress.marks ||= {}
+progress.wrong ||= {}
+progress.notes ||= {}
+progress.sessions ||= []
+progress.exams ||= []
+if (progress.exam && !progress.exams.length) progress.exams.push(progress.exam)
+delete progress.exam
 
 let saveTimer = null
 function saveProgress () {
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    fs.writeFile(PROG, JSON.stringify(progress), err => {
-      if (err) console.warn('[server] save failed:', err.message)
+    // 原子写：先写临时文件再 rename，避免写一半进程被杀导致进度文件损坏
+    const tmp = PROG + '.tmp'
+    fs.writeFile(tmp, JSON.stringify(progress), (err) => {
+      if (err) return console.warn('[server] save failed:', err.message)
+      fs.rename(tmp, PROG, (e2) => { if (e2) console.warn('[server] save rename failed:', e2.message) })
     })
   }, 400)
 }
@@ -218,7 +255,7 @@ app.get('/api/search/:bank', (req, res) => {
 app.get('/api/questions/:bank/:id', (req, res) => {
   const it = byId[req.params.bank]?.get(+req.params.id)
   if (!it) return res.status(404).json({ error: 'not found' })
-  res.json(it)
+  res.json({ ...it, note: progress.notes[+req.params.id]?.text || '' })
 })
 
 // 自评题型：不计入客观正确率
@@ -361,7 +398,11 @@ app.get('/api/progress', (req, res) => {
   for (const [id, t] of Object.entries(progress.marks)) {
     if (map.has(+id)) marks[id] = t
   }
-  res.json({ answers, marks, bank })
+  const notes = {}
+  for (const [id, n] of Object.entries(progress.notes || {})) {
+    if (map.has(+id)) notes[id] = n
+  }
+  res.json({ answers, marks, notes, bank })
 })
 
 // 已标记的题
@@ -431,7 +472,7 @@ app.post('/api/answer', (req, res) => {
 app.post('/api/reset', (req, res) => {
   const { bank, scope, ids } = req.body || {}
   if (scope === 'all') {
-    progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exam: null }
+    progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exams: [], notes: {} }
   } else if (scope === 'items') {
     // 只清掉指定题目（用于「重置本场考试」），不影响其它进度
     for (const id of Array.isArray(ids) ? ids : []) {
@@ -465,15 +506,18 @@ app.post('/api/session', (req, res) => {
   res.json({ ok: true })
 })
 
-// ---------- 考试进行中状态（刷新 / 换设备可续考） ----------
-app.get('/api/exam', (req, res) => res.json(progress.exam || null))
+// ---------- 考试进行中状态（支持多场，刷新 / 换设备可续考） ----------
+const examKey = (e) => e.bank + ':' + e.ver + ':' + e.group
+
+app.get('/api/exam', (req, res) => res.json(progress.exams[0] || null))
+app.get('/api/exams', (req, res) => res.json(progress.exams))
 
 app.post('/api/exam', (req, res) => {
   const { bank, ver, group, left, picks, startedAt } = req.body || {}
   if (!bank || ver == null || group == null) {
     return res.status(400).json({ error: 'bank, ver, group required' })
   }
-  progress.exam = {
+  const exam = {
     bank,
     ver: +ver,
     group: +group,
@@ -482,14 +526,166 @@ app.post('/api/exam', (req, res) => {
     startedAt: startedAt || Date.now(),
     t: Date.now(),
   }
+  const i = progress.exams.findIndex((e) => examKey(e) === examKey(exam))
+  if (i >= 0) progress.exams[i] = exam
+  else progress.exams.push(exam)
   saveProgress()
-  res.json({ ok: true, exam: progress.exam })
+  res.json({ ok: true, exam })
 })
 
+// 带 bank/ver/group 删除一场；不带参数删除全部
 app.delete('/api/exam', (req, res) => {
-  progress.exam = null
+  const { bank, ver, group } = { ...req.query, ...(req.body || {}) }
+  if (bank && ver != null && group != null) {
+    progress.exams = progress.exams.filter(
+      (e) => !(e.bank === bank && e.ver === +ver && e.group === +group),
+    )
+  } else {
+    progress.exams = []
+  }
   saveProgress()
   res.json({ ok: true })
+})
+
+// ---------- 成绩记录 ----------
+app.get('/api/sessions', (req, res) => {
+  const bank = clean(req.query.bank)
+  const list = progress.sessions.filter((s) => !bank || s.bank === bank)
+  res.json(list.slice().reverse().slice(0, 200))
+})
+
+// ---------- 每日做题统计（东八区） ----------
+app.get('/api/daily/:bank', (req, res) => {
+  const map = byId[req.params.bank]
+  if (!map) return res.status(404).json({ error: 'bank not found' })
+  const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30))
+  const TZ = 8 * 3600 * 1000
+  const byDay = {}
+  for (const [idStr, rec] of Object.entries(progress.answers)) {
+    const id = +idStr
+    if (!map.has(id) || !rec.t) continue
+    const key = new Date(rec.t + TZ).toISOString().slice(0, 10)
+    const d = byDay[key] || (byDay[key] = { date: key, done: 0, right: 0, score: 0, full: 0 })
+    d.done++
+    if (rec.state === 'ok') d.right++
+    d.score += rec.score || 0
+    d.full += map.get(id).score || 0
+  }
+  const out = []
+  const now = Date.now() + TZ
+  for (let i = days - 1; i >= 0; i--) {
+    const key = new Date(now - i * 86400000).toISOString().slice(0, 10)
+    out.push(byDay[key] || { date: key, done: 0, right: 0, score: 0, full: 0 })
+  }
+  res.json(out)
+})
+
+// ---------- 随机练习 / 智能组卷 ----------
+app.get('/api/random/:bank', (req, res) => {
+  const b = banks[req.params.bank]
+  const map = byId[req.params.bank]
+  if (!b || !map) return res.status(404).json({ error: 'bank not found' })
+  const count = Math.min(100, Math.max(1, parseInt(req.query.count, 10) || 20))
+  const kind = clean(req.query.kind)
+  const part = nf(req.query.part)
+  const sec = nf(req.query.sec)
+  const smart = ['1', 'true', 'yes'].includes(String(clean(req.query.smart) || '').toLowerCase())
+  let pool = b.questionIds.map((id) => map.get(id))
+  if (kind) pool = pool.filter((it) => it.kind === kind)
+  if (Number.isFinite(part)) pool = pool.filter((it) => it.part === part)
+  if (Number.isFinite(sec)) pool = pool.filter((it) => it.sec === sec)
+  const weight = (it) => {
+    const r = progress.answers[it.id]
+    if (!r) return 3
+    if (r.state === 'bad') return 4
+    if (r.state === 'part') return 2
+    return 0.4
+  }
+  const picked = []
+  if (smart) {
+    const arr = pool.slice()
+    const w = arr.map(weight)
+    while (picked.length < count && arr.length) {
+      const total = w.reduce((a, c) => a + c, 0)
+      if (total <= 0) break
+      let r = Math.random() * total
+      let i = 0
+      for (; i < arr.length; i++) { r -= w[i]; if (r <= 0) break }
+      if (i >= arr.length) i = arr.length - 1
+      picked.push(arr[i]); arr.splice(i, 1); w.splice(i, 1)
+    }
+  } else {
+    pool = pool.slice()
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const t = pool[i]; pool[i] = pool[j]; pool[j] = t
+    }
+    picked.push(...pool.slice(0, count))
+  }
+  const light = ({ expl, refAnswer, ...rest }) => rest
+  res.json({ total: picked.length, items: picked.map(light) })
+})
+
+// ---------- 全库按 id 取题（?q= 直达链接） ----------
+app.get('/api/byid/:id', (req, res) => {
+  const id = +req.params.id
+  for (const [bank, map] of Object.entries(byId)) {
+    const it = map.get(id)
+    if (it) return res.json({ ...it, bank, note: progress.notes[id]?.text || '' })
+  }
+  res.status(404).json({ error: 'not found' })
+})
+
+// ---------- 题目笔记 ----------
+app.post('/api/note', (req, res) => {
+  const { id, text } = req.body || {}
+  if (id == null) return res.status(400).json({ error: 'id required' })
+  const t = String(text == null ? '' : text).slice(0, 4000)
+  if (!t.trim()) delete progress.notes[id]
+  else progress.notes[id] = { text: t, t: Date.now() }
+  saveProgress()
+  res.json({ ok: true, note: t.trim() ? t : '' })
+})
+
+app.get('/api/notes/:bank', (req, res) => {
+  const map = byId[req.params.bank]
+  if (!map) return res.status(404).json({ error: 'bank not found' })
+  const items = []
+  for (const [id, n] of Object.entries(progress.notes)) {
+    const it = map.get(+id)
+    if (!it) continue
+    items.push({
+      id: +id, note: n.text, t: n.t, kind: it.kind, part: it.part, sec: it.sec,
+      partName: it.partName, secName: it.secName, stem: it.stem.slice(0, 160),
+    })
+  }
+  items.sort((a, b) => (b.t || 0) - (a.t || 0))
+  res.json({ total: items.length, items })
+})
+
+// ---------- 进度导出 / 导入 ----------
+app.get('/api/export', (req, res) => {
+  const name = 'ncre-progress-' + new Date().toISOString().slice(0, 10) + '.json'
+  res.setHeader('Content-Disposition', 'attachment; filename="' + name + '"')
+  res.json(progress)
+})
+
+app.post('/api/import', (req, res) => {
+  const d = req.body
+  if (!d || typeof d !== 'object' || !d.answers || typeof d.answers !== 'object') {
+    return res.status(400).json({ error: '不是有效的进度文件' })
+  }
+  progress = {
+    answers: d.answers || {},
+    marks: d.marks || {},
+    wrong: d.wrong || {},
+    sessions: Array.isArray(d.sessions) ? d.sessions : [],
+    settings: d.settings && typeof d.settings === 'object' ? d.settings : {},
+    exams: Array.isArray(d.exams) ? d.exams : [],
+    notes: d.notes && typeof d.notes === 'object' ? d.notes : {},
+  }
+  saveProgress()
+  res.json({ ok: true, answers: Object.keys(progress.answers).length })
 })
 
 // images
