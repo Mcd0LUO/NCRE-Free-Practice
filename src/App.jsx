@@ -153,22 +153,26 @@ export default function App() {
   }, [mode, bank, sel, kindFilter])
 
   // ---------- 错题本 ----------
+  // 依赖里绝不能放 results：本 effect 会调用 resetRun()（setResults 新对象），
+  // 而 results 若在依赖中，每次重置都会再次触发本 effect，形成无限渲染。
+  // 答完题后列表由 submit() 就地更新，不需要重新拉取。
   useEffect(() => {
     if (mode !== 'wrong' || !bank) return
     resetRun()
     setWrong(null)
     api.getWrong(bank).then((r) => setWrong(r.items))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, bank, results])
+  }, [mode, bank])
 
   // ---------- 标记题 ----------
+  // 同理：marked 不放依赖，取消标记时就地移除，避免再次触发放置态的 effect。
   useEffect(() => {
     if (mode !== 'marked' || !bank) return
     resetRun()
     setMarkedList(null)
     api.getMarked(bank).then((r) => setMarkedList(r.items))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, bank, marked])
+  }, [mode, bank])
 
   // ---------- 搜索 ----------
   const runSearch = useCallback(
@@ -284,6 +288,10 @@ export default function App() {
     [item, picks, bank, refreshStats, mode],
   )
 
+  // 交卷后锁定作答。必须在 onCheck 之前声明：onCheck 的闭包会读取它，
+  // 而 const 存在暂时性死区，放到后面会让渲染期调用直接抛 ReferenceError。
+  const locked = mode === 'exam' && examSubmitted
+
   const onCheck = useCallback(() => {
     if (!item || results[item.id] || locked) return
     const r = grade(item, picks[item.id])
@@ -294,8 +302,6 @@ export default function App() {
     }
     submit(r)
   }, [item, picks, results, submit, locked])
-
-  const locked = mode === 'exam' && examSubmitted
 
   const onPick = useCallback(
     (L) => {
@@ -343,6 +349,13 @@ export default function App() {
       if (on) next.add(id)
       else next.delete(id)
       api.postMark(id, on).catch(() => {})
+      // 标记题列表就地同步：取消标记时从列表移除，避免依赖 marked 触发重新拉取
+      if (on) {
+        const it = byIdRef.current.get(id)
+        if (it) setMarkedList((list) => (list && !list.some((x) => x.id === id) ? [it, ...list] : list))
+      } else {
+        setMarkedList((list) => (list || []).filter((x) => x.id !== id))
+      }
       return next
     })
   }, [])
