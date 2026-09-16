@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        if (localStorage.getItem('ncre-theme') === 'dark') document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
     <title>NCRE 数据库刷题</title>
   </head>
   <body>

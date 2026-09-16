@@ -125,6 +125,17 @@ function ExportRow() {
   )
 }
 
+// 深色模式切换
+function ThemeRow({ theme, onToggle }) {
+  return (
+    <div className="mt-2 flex items-center gap-2 border-t border-gray-200 pt-2">
+      <button type="button" onClick={onToggle} className="n-btn px-1.5 py-0.5 text-[11px] text-gray-500">
+        {theme === 'dark' ? '切换浅色' : '切换深色'}
+      </button>
+    </div>
+  )
+}
+
 // 退出登录
 function LogoutRow({ onLogout }) {
   return (
@@ -141,7 +152,7 @@ function LogoutRow({ onLogout }) {
 }
 
 // 左侧固定侧边栏：米色背景 + 页面列表（Notion 文档结构）
-export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, open, onClose, onReset, onLogout }) {
+export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, open, onClose, onReset, onLogout, theme, onToggleTheme }) {
   const modes = [
     { id: 'category', label: '分类练习', icon: 'list', hint: '按知识点逐类攻克' },
     { id: 'random', label: '随机练习', icon: 'target', hint: '随机抽题 / 智能组卷' },
@@ -259,6 +270,7 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
             <ResetRow onReset={onReset} />
             <LogoutRow onLogout={onLogout} />
             <ExportRow />
+            <ThemeRow theme={theme} onToggle={onToggleTheme} />
           </div>
         )}
       </aside>

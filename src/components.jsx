@@ -15,7 +15,12 @@ export function RichText({ text, className = '' }) {
               src={'/images/' + encodeURIComponent(m[1])}
               alt={'题目配图 ' + m[1]}
               loading="lazy"
-              className="my-2 max-w-full rounded-md border border-gray-200"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent('ncre:image', { detail: '/images/' + encodeURIComponent(m[1]) }),
+                )
+              }
+              className="my-2 max-w-full cursor-zoom-in rounded-md border border-gray-200"
             />
           )
         }

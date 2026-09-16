@@ -71,6 +71,11 @@ export default function App() {
   const [notes, setNotes] = useState({})
   const [notesList, setNotesList] = useState(null)
   const [focusItem, setFocusItem] = useState(null)
+  // 图片灯箱 + 深色模式
+  const [lightbox, setLightbox] = useState(null)
+  const [theme, setTheme] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+  )
 
   // 解析懒加载：id -> 完整题目（仅含被展开过解析的题）
   const [details, setDetails] = useState({})
@@ -127,6 +132,30 @@ export default function App() {
       })
       .catch(() => {})
   }, [authed])
+
+  // 图片灯箱：RichText 里的图片点击后全局放大
+  useEffect(() => {
+    const onImg = (e) => setLightbox(e.detail)
+    window.addEventListener('ncre:image', onImg)
+    return () => window.removeEventListener('ncre:image', onImg)
+  }, [])
+
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') setLightbox(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox])
+
+  // 深色模式：html.dark + localStorage 记忆（首屏由 index.html 内联脚本预设，避免闪白）
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    try {
+      localStorage.setItem('ncre-theme', theme)
+    } catch {}
+  }, [theme])
 
   const refreshStats = useCallback(() => {
     if (!bank) return
@@ -738,6 +767,8 @@ export default function App() {
         onClose={() => setSidebar(false)}
         onReset={doReset}
         onLogout={doLogout}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -1706,6 +1737,26 @@ export default function App() {
             </span>
           </div>
         </footer>
+      )}
+
+      {/* 图片灯箱 */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <img src={lightbox} alt="题目配图" className="max-h-full max-w-full rounded-md bg-white object-contain" />
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label="关闭图片"
+            className="absolute right-4 top-4 rounded-md bg-white/90 px-2 py-1 text-sm text-gray-700"
+          >
+            关闭
+          </button>
+        </div>
       )}
     </div>
   )

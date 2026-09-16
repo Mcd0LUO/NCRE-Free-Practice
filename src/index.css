@@ -73,3 +73,27 @@
 article {
   scroll-margin-top: 64px;
 }
+
+/* ---------- 深色模式（html.dark） ---------- */
+html.dark { color-scheme: dark; }
+html.dark body { background: #1a1a1a; color: #e8e6e3; }
+html.dark .bg-white { background-color: #252525 !important; }
+html.dark .bg-\[\#f7f6f3\] { background-color: #1a1a1a !important; }
+html.dark .text-\[\#37352f\] { color: #e8e6e3 !important; }
+html.dark .border-gray-200 { border-color: #3a3a3a !important; }
+html.dark .bg-gray-100 { background-color: #2f2f2f !important; }
+html.dark .bg-gray-50 { background-color: #2b2b2b !important; }
+html.dark .text-gray-600, html.dark .text-gray-700 { color: #b8b5b0 !important; }
+html.dark .text-gray-400, html.dark .text-gray-500 { color: #8f8f8f !important; }
+html.dark .n-btn:hover { background-color: #2f2f2f; }
+html.dark .n-input { background-color: #2b2b2b; color: #e8e6e3; border-color: #3a3a3a; }
+html.dark .n-card { background-color: #252525; border-color: #3a3a3a; }
+html.dark .bg-yellow-50 { background-color: #38301c !important; }
+html.dark .bg-blue-50, html.dark .bg-blue-50\/60 { background-color: #1e2c36 !important; }
+html.dark .bg-green-50 { background-color: #16302b !important; }
+html.dark .bg-red-50 { background-color: #3a2222 !important; }
+html.dark .bg-yellow-100 { background-color: #4a3f1a !important; }
+html.dark mark { background-color: #4a3f1a !important; color: #e8e6e3 !important; }
+html.dark .bg-\[\#efedea\] { background-color: #2f2f2f !important; }
+html.dark .bg-\[\#e3e1db\] { background-color: #3a3a3a !important; }
+html.dark .text-\[\#2eaadc\] { color: #6fc6ea !important; }
