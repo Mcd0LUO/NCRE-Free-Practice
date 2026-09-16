@@ -51,6 +51,7 @@ export default function App() {
   const runStatsRef = useRef({ done: 0, right: 0, score: 0, full: 0 })
   const examLeftRef = useRef(0)
   const picksRef = useRef({})
+  const resultsRef = useRef({})
 
   // 错题本
   const [wrong, setWrong] = useState(null)
@@ -228,7 +229,7 @@ export default function App() {
 
   // ---------- 分类：加载题目 ----------
   const loadCategory = useCallback(
-    (s, kind, p = 1) => {
+    (s, kind, p = 1, autoJump = false) => {
       if (!bank || !s) return
       const id = ++reqId.current
       setLoading(true)
@@ -239,6 +240,11 @@ export default function App() {
           setList(r.items)
           setTotal(r.total)
           setPage(r.page)
+          // 续做：进入分类时跳到「上次做完后的下一题」= 本页第一道未作答
+          if (autoJump) {
+            const next = r.items.findIndex((it) => !resultsRef.current[it.id])
+            setIdx(next >= 0 ? next : 0)
+          }
         })
         .catch(() => {
           if (id === reqId.current) setList(EMPTY)
@@ -255,7 +261,7 @@ export default function App() {
     if (mode !== 'category' || !sel) return
     resetRun()
     setFreshIds(new Set())
-    loadCategory(sel, kindFilter, 1)
+    loadCategory(sel, kindFilter, 1, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, bank, sel, kindFilter])
 
@@ -661,6 +667,7 @@ export default function App() {
   runStatsRef.current = runStats
   examLeftRef.current = examLeft
   picksRef.current = picks
+  resultsRef.current = results
 
   const currentBank = banks.find((b) => b.id === bank)
   const sections = stats?.sections || []
