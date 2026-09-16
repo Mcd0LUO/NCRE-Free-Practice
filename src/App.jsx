@@ -55,8 +55,17 @@ export default function App() {
   // 错题本
   const [wrong, setWrong] = useState(null)
 
+  const [wrongSec, setWrongSec] = useState(0)
+
   // 标记题
   const [markedList, setMarkedList] = useState(null)
+
+  // 随机练习 / 智能组卷
+  const [randomItems, setRandomItems] = useState(null)
+  const [randomCount, setRandomCount] = useState(20)
+  const [randomKind, setRandomKind] = useState('')
+  const [randomSmart, setRandomSmart] = useState(true)
+  const [randomLoading, setRandomLoading] = useState(false)
 
   // 解析懒加载：id -> 完整题目（仅含被展开过解析的题）
   const [details, setDetails] = useState({})
@@ -197,6 +206,7 @@ export default function App() {
     if (mode !== 'wrong' || !bank) return
     resetRun()
     setWrong(null)
+    setWrongSec(0)
     api.getWrong(bank).then((r) => {
       setWrong(r.items)
       setFreshIds(new Set(r.items.map((x) => x.id)))
@@ -236,6 +246,25 @@ export default function App() {
     [bank],
   )
 
+  // ---------- 随机练习 / 智能组卷 ----------
+  const startRandom = useCallback(() => {
+    if (!bank) return
+    setRandomLoading(true)
+    api
+      .getRandom(bank, {
+        count: randomCount,
+        kind: randomKind || undefined,
+        smart: randomSmart ? 1 : undefined,
+      })
+      .then((r) => {
+        setRandomItems(r.items)
+        setFreshIds(new Set(r.items.map((x) => x.id)))
+        resetRun()
+      })
+      .catch(() => setRandomItems([]))
+      .finally(() => setRandomLoading(false))
+  }, [bank, randomCount, randomKind, randomSmart])
+
   // ---------- 考试 ----------
   useEffect(() => {
     if (mode !== 'exam' || !bank) return
@@ -269,12 +298,16 @@ export default function App() {
   // 放到后面会让下面的自动交卷 effect 触发 TDZ（Cannot access 'items' before initialization）。
   const items = useMemo(() => {
     if (mode === 'category') return list ?? EMPTY
-    if (mode === 'wrong') return wrong ?? EMPTY
+    if (mode === 'wrong') {
+      const all = wrong ?? EMPTY
+      return wrongSec ? all.filter((x) => x.sec === wrongSec) : all
+    }
+    if (mode === 'random') return randomItems ?? EMPTY
     if (mode === 'marked') return markedList ?? EMPTY
     if (mode === 'exam') return exam?.items ?? EMPTY
     if (mode === 'search') return searchOpen ? [searchOpen] : EMPTY
     return EMPTY
-  }, [mode, list, wrong, markedList, exam, searchOpen])
+  }, [mode, list, wrong, wrongSec, randomItems, markedList, exam, searchOpen])
 
   // A2: 倒计时归零自动交卷（此前只显示「时间到」，并不会真正收卷）
   useEffect(() => {
@@ -393,9 +426,11 @@ export default function App() {
         n.delete(item.id)
         return n
       })
-      // 错题本模式下答对：立即从列表移除，给出即时反馈
+      // 错题本模式下答对：立即从列表移除并顺位到下一题（即时反馈 + 连续重刷）
       if (mode === 'wrong' && r.state === 'ok') {
+        const nextLen = (wrong || []).filter((x) => x.id !== item.id).length
         setWrong((list) => (list || []).filter((x) => x.id !== item.id))
+        setIdx((i) => Math.max(0, Math.min(i, nextLen - 1)))
       }
       const pick = picks[item.id] || {}
       try {
@@ -413,7 +448,7 @@ export default function App() {
       }
       refreshStats()
     },
-    [item, picks, bank, refreshStats, mode],
+    [item, picks, wrong, bank, refreshStats, mode],
   )
 
   // 交卷后锁定作答。必须在 onCheck 之前声明：onCheck 的闭包会读取它，
@@ -970,10 +1005,103 @@ export default function App() {
           {/* ---------- 成绩记录 ---------- */}
           {mode === 'records' && <Records bank={bank} />}
 
+          {/* ---------- 随机练习 / 智能组卷 ---------- */}
+          {mode === 'random' && !randomItems && (
+            <div className="space-y-5">
+              <div>
+                <h1 className="text-xl font-semibold text-[#37352f] md:text-2xl">随机练习 / 智能组卷</h1>
+                <p className="mt-1 text-sm text-gray-600">随机抽题；开启智能组卷后，未做与做错的题会优先出现。</p>
+              </div>
+              <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <label className="flex items-center gap-3 text-sm text-gray-600">
+                  题量
+                  <select
+                    value={randomCount}
+                    onChange={(e) => setRandomCount(+e.target.value)}
+                    className="n-input px-2 py-1.5 text-sm"
+                  >
+                    {[10, 20, 30, 50].map((n) => (
+                      <option key={n} value={n}>{n} 题</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-3 text-sm text-gray-600">
+                  题型
+                  <select
+                    value={randomKind}
+                    onChange={(e) => setRandomKind(e.target.value)}
+                    className="n-input px-2 py-1.5 text-sm"
+                  >
+                    <option value="">全部</option>
+                    <option value="single">单选题</option>
+                    <option value="multi">多选题</option>
+                    <option value="fill">填空题</option>
+                    <option value="essay">设计与应用题</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={randomSmart}
+                    onChange={(e) => setRandomSmart(e.target.checked)}
+                  />
+                  智能组卷（未做 / 做错优先）
+                </label>
+                <button
+                  type="button"
+                  disabled={randomLoading}
+                  onClick={startRandom}
+                  className="rounded-md bg-[#2eaadc] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#2898c4] disabled:opacity-50"
+                >
+                  {randomLoading ? '抽题中…' : '开始练习'}
+                </button>
+              </section>
+            </div>
+          )}
+
+          {mode === 'random' && randomItems && (
+            <RunView
+              items={items}
+              idx={idx}
+              setIdx={setIdx}
+              picks={picks}
+              results={displayResults}
+              marked={marked}
+              details={details}
+              onPick={onPick}
+              onFill={onFill}
+              onSelf={onSelf}
+              onCheck={onCheck}
+              onToggleShow={onToggleShow}
+              onMark={onMark}
+              emptyTitle="没有抽到题目"
+              emptyHint="换个条件再试，或先做分类练习。"
+              header={
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm">
+                  <span className="text-gray-600">
+                    {randomSmart ? '智能组卷' : '随机练习'} · 共 <span className="font-mono">{items.length}</span> 题
+                  </span>
+                  <div className="ml-auto flex gap-2">
+                    <button type="button" onClick={startRandom} className="n-btn border border-gray-200 px-2">
+                      换一批
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setRandomItems(null); setIdx(0) }}
+                      className="n-btn px-2 text-gray-600"
+                    >
+                      重新设置
+                    </button>
+                  </div>
+                </div>
+              }
+            />
+          )}
+
           {/* ---------- 错题本 ---------- */}
           {mode === 'wrong' && (
             <RunView
-              items={wrong}
+              items={items}
               idx={idx}
               setIdx={setIdx}
               picks={picks}
@@ -988,6 +1116,35 @@ export default function App() {
               onMark={onMark}
               emptyTitle="错题本是空的"
               emptyHint="先去分类练习做题，答错的题会自动汇总到这里。"
+              header={
+                (wrong?.length || 0) > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm">
+                    <span className="text-gray-600">
+                      共 <span className="font-mono">{wrong.length}</span> 道错题
+                    </span>
+                    <label className="ml-auto flex items-center gap-2 text-gray-600">
+                      知识点
+                      <select
+                        value={wrongSec}
+                        onChange={(e) => { setWrongSec(+e.target.value); setIdx(0) }}
+                        className="n-input px-2 py-1.5 text-sm"
+                      >
+                        <option value={0}>全部</option>
+                        {[...new Map((wrong || []).map((x) => [x.sec, x])).values()].map((x) => (
+                          <option key={x.sec} value={x.sec}>{x.secName}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setIdx(0); setFreshIds(new Set((wrong || []).map((x) => x.id))) }}
+                      className="n-btn border border-gray-200 px-2"
+                    >
+                      重刷全部
+                    </button>
+                  </div>
+                ) : null
+              }
             />
           )}
 

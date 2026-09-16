@@ -144,6 +144,7 @@ function LogoutRow({ onLogout }) {
 export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, open, onClose, onReset, onLogout }) {
   const modes = [
     { id: 'category', label: '分类练习', icon: 'list', hint: '按知识点逐类攻克' },
+    { id: 'random', label: '随机练习', icon: 'target', hint: '随机抽题 / 智能组卷' },
     { id: 'exam', label: '模拟考试', icon: 'clock', hint: '限时成套做卷' },
     { id: 'wrong', label: '错题本', icon: 'target', hint: '只刷做错的题' },
     { id: 'marked', label: '标记题', icon: 'flag', hint: '我标记待复习的题' },
