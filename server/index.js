@@ -20,7 +20,7 @@ app.use(express.json({ limit: '4mb' }))
 const banks = {}
 const byId = {}
 for (const f of fs.readdirSync(DATA)) {
-  const m = f.match(/^bank_([w-]+).json$/)
+  const m = f.match(/^bank_([\w-]+)\.json$/)
   if (!m) continue
   const key = m[1]
   try {

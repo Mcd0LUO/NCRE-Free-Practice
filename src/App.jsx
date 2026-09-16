@@ -266,6 +266,26 @@ export default function App() {
   // 合并懒加载到的解析，保持展示层字段完整
   const item = rawItem && details[rawItem.id] ? { ...rawItem, ...details[rawItem.id] } : rawItem
 
+  // 解析懒加载：解析区块一旦可见（判分后 revealed=true，或用户点开）就拉一次全量。
+  // 原先只在 onToggleShow 里取，但判分时 revealed 已置 true，用户不会再点按钮，
+  // 导致解析区块展开却是空的。
+  const curId = item?.id
+  const curRevealed = curId != null ? !!results[curId]?.revealed : false
+  useEffect(() => {
+    if (curId == null || !curRevealed) return
+    if (details[curId]) return // 已取过（解析本身可能为空，也算取过）
+    let alive = true
+    api
+      .getDetail(bank, curId)
+      .then((full) => {
+        if (alive && full) setDetails((d) => ({ ...d, [curId]: full }))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [curId, curRevealed, details, bank])
+
   const submit = useCallback(
     async (r) => {
       if (!item) return
@@ -340,21 +360,12 @@ export default function App() {
 
   const onToggleShow = useCallback(() => {
     if (!item) return
-    // 列表数据不含解析，展开时再按 id 拉全量
-    if (!details[item.id]) {
-      api
-        .getDetail(bank, item.id)
-        .then((full) => {
-          if (full) setDetails((d) => ({ ...d, [item.id]: full }))
-        })
-        .catch(() => {})
-    }
     setResults((s) => {
       const r = s[item.id]
       if (!r) return s
       return { ...s, [item.id]: { ...r, revealed: !r.revealed } }
     })
-  }, [item, details, bank])
+  }, [item])
 
   const onMark = useCallback((id) => {
     setMarked((prev) => {
