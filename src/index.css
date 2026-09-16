@@ -68,3 +68,8 @@
 .n-safe-bottom {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
 }
+
+/* 切题定位：题卡顶部留出吸顶 header 的高度，避免题干被压住 */
+article {
+  scroll-margin-top: 64px;
+}

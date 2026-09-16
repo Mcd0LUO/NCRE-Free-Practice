@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Icon, ProgressBar } from './components.jsx'
 import * as api from './api.js'
 
@@ -64,6 +64,67 @@ function ResetRow({ onReset }) {
   )
 }
 
+// 进度导出 / 导入（JSON 文件，便于换机或备份）
+function ExportRow() {
+  const [msg, setMsg] = useState('')
+  const fileRef = useRef(null)
+
+  const doExport = () => {
+    api
+      .exportProgress()
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'ncre-progress-' + new Date().toISOString().slice(0, 10) + '.json'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+        setMsg('已导出')
+        setTimeout(() => setMsg(''), 2500)
+      })
+      .catch(() => setMsg('导出失败'))
+  }
+
+  const doImport = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      let data
+      try {
+        data = JSON.parse(String(reader.result))
+      } catch {
+        setMsg('文件格式错误')
+        return
+      }
+      api
+        .importProgress(data)
+        .then(() => {
+          setMsg('已导入，刷新中…')
+          setTimeout(() => window.location.reload(), 700)
+        })
+        .catch(() => setMsg('导入失败'))
+    }
+    reader.readAsText(f)
+    e.target.value = ''
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 border-t border-gray-200 pt-2">
+      <button type="button" onClick={doExport} className="n-btn px-1.5 py-0.5 text-[11px] text-gray-500">
+        导出进度
+      </button>
+      <button type="button" onClick={() => fileRef.current?.click()} className="n-btn px-1.5 py-0.5 text-[11px] text-gray-500">
+        导入进度
+      </button>
+      <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={doImport} />
+      {msg && <span className="text-[11px] text-gray-400">{msg}</span>}
+    </div>
+  )
+}
+
 // 退出登录
 function LogoutRow({ onLogout }) {
   return (
@@ -86,6 +147,7 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
     { id: 'exam', label: '模拟考试', icon: 'clock', hint: '限时成套做卷' },
     { id: 'wrong', label: '错题本', icon: 'target', hint: '只刷做错的题' },
     { id: 'marked', label: '标记题', icon: 'flag', hint: '我标记待复习的题' },
+    { id: 'records', label: '成绩记录', icon: 'clock', hint: '历史考试与每日统计' },
     { id: 'search', label: '全局搜索', icon: 'search', hint: '按关键词搜题干与选项' },
   ]
 
@@ -194,6 +256,7 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
             <BackupRow />
             <ResetRow onReset={onReset} />
             <LogoutRow onLogout={onLogout} />
+            <ExportRow />
           </div>
         )}
       </aside>

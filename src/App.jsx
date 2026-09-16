@@ -6,6 +6,8 @@ import { Tag, ProgressBar, Icon, Loading, Empty } from './components.jsx'
 import { grade, KIND_LABEL } from './grading'
 import * as api from './api.js'
 import Login from './Login.jsx'
+import Records from './Records.jsx'
+import WeakPoints from './WeakPoints.jsx'
 
 const EMPTY = []
 
@@ -491,12 +493,19 @@ export default function App() {
       setIdx((i) => {
         const n = i + d
         if (n < 0 || n >= items.length) return i
-        window.scrollTo({ top: 0, behavior: 'smooth' })
         return n
       })
     },
     [items.length],
   )
+
+  // 切题定位：把题卡顶部对齐到吸顶 header 下方，
+  // 让下一题的题干/选项/提交按钮直接可见 —— 而不是滚回页面最顶部
+  // （那里有总进度块，会把题目顶到屏幕外）。
+  useEffect(() => {
+    const el = document.querySelector('main article')
+    if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [idx, items])
 
   // 键盘
   useEffect(() => {
@@ -750,7 +759,7 @@ export default function App() {
 
           <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-32 md:px-6">
           {/* 总览 */}
-          {stats && mode !== 'exam' && (
+          {stats && mode !== 'exam' && !(mode === 'category' && sel) && (
             <section className="mb-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <span className="font-medium text-[#37352f]">总进度</span>
@@ -821,6 +830,15 @@ export default function App() {
                   共 {parts.length} 个大类、{sections.length} 个知识点。分类来自原题库的组卷结构。
                 </p>
               </div>
+
+              <WeakPoints
+                sections={sections}
+                onPick={(s) => {
+                  setSel({ part: s.part, sec: s.sec })
+                  setKindFilter('')
+                  window.scrollTo({ top: 0 })
+                }}
+              />
 
               {parts.map((p) => (
                 <section key={p.id}>
@@ -948,6 +966,9 @@ export default function App() {
               )}
             </>
           )}
+
+          {/* ---------- 成绩记录 ---------- */}
+          {mode === 'records' && <Records bank={bank} />}
 
           {/* ---------- 错题本 ---------- */}
           {mode === 'wrong' && (

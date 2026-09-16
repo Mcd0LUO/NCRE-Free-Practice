@@ -80,7 +80,26 @@ export const postExam = (body) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }).then(j)
-export const delExam = () => fetch('/api/exam', { method: 'DELETE' }).then(j)
+export const getExams = () => fetch('/api/exams').then(j)
+export const delExam = (q) => fetch('/api/exam' + (q ? '?' + qs(q) : ''), { method: 'DELETE' }).then(j)
+export const getSessions = (bank) => fetch('/api/sessions' + (bank ? '?bank=' + bank : '')).then(j)
+export const getDaily = (bank, days = 30) => fetch('/api/daily/' + bank + '?days=' + days).then(j)
+export const getRandom = (bank, params = {}) => fetch('/api/random/' + bank + '?' + qs(params)).then(j)
+export const getById = (id) => fetch('/api/byid/' + id).then(j)
+export const postNote = (id, text) =>
+  fetch('/api/note', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, text }),
+  }).then(j)
+export const getNotes = (bank) => fetch('/api/notes/' + bank).then(j)
+export const exportProgress = () => fetch('/api/export').then((r) => (r.ok ? r.blob() : Promise.reject(new Error('export failed'))))
+export const importProgress = (data) =>
+  fetch('/api/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(j)
 
 export const postSession = (body) =>
   fetch('/api/session', {
