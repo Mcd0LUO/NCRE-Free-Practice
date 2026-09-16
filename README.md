@@ -57,7 +57,11 @@ Vite 已把 `/api` 与 `/images` 代理到后端，所以只需访问前端 5180
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/banks` | 题库列表 + 分类树 |
-| GET | `/api/questions?bank=&part=&sec=&kind=&q=&page=&size=` | 分页筛选题目 |
+| GET | `/api/questions?bank=&part=&sec=&kind=&q=&page=&size=&fields=` | 分页筛选题目（默认不含解析，`fields=full` 取全量） |
+| GET | `/api/questions/:bank/:id` | 单题全量（解析懒加载的数据源） |
+| GET | `/api/search/:bank?q=&kind=` | 全文搜索题干与选项 |
+| GET | `/api/marked/:bank` | 已标记的题 |
+| POST | `/api/backup` / GET `/api/backups` | 进度备份 |
 | GET | `/api/stats/:bank` | 总进度 + 每分类正确率 |
 | GET | `/api/wrong/:bank` | 错题列表 |
 | GET | `/api/papers/:bank` | 试卷列表 |
@@ -65,6 +69,14 @@ Vite 已把 `/api` 与 `/images` 代理到后端，所以只需访问前端 5180
 | POST | `/api/answer` | 记录作答 |
 | POST | `/api/mark` | 收藏/标记 |
 | POST | `/api/reset` | 清空进度（`scope: all \| bank`） |
+
+## 性能
+
+- **gzip**：`compression` 中间件，JSON 响应传输体积下降 77-87%
+- **数据分层**：列表接口不含 `expl`/`refAnswer`（占单题体积约 50%），
+  解析在可见时按 id 单取并缓存
+- 列表 100 题：**82.7 KB → 7.6 KB（-90.8%）**
+- 服务端查询在内存 Map 上完成，中位 3-4 ms
 
 ## 判分规则
 
@@ -78,20 +90,22 @@ Vite 已把 `/api` 与 `/images` 代理到后端，所以只需访问前端 5180
 
 ## 数据结构
 
-`server/data/banks.json`（4.2MB）由题库导出脚本生成：
+题库**按等级分文件**存放：`server/data/bank_<id>.json`（三级 = `bank_36.json`，
+四级 = `bank_42.json`）。一库一文件，编辑或重建只影响单库，git diff 也落在对应等级范围内。
+服务端启动时扫描 `bank_*.json`，新增等级只需放入文件，无需改代码。
 
 ```jsonc
 {
-  "42": {
-    "id": "42", "name": "四级数据库工程师", "grade": 4, "timeMin": 90,
-    "parts":   [ { "id": 1, "name": "操作系统原理-单选题", "sections": [...] } ],
-    "questions": [ { "id", "kind", "score", "half", "part", "partName",
-                     "sec", "secName", "stem", "options", "letters",
-                     "refAnswer", "fills", "expl", "images" } ],
-    "papers":  [ { "ver", "group", "date", "sections": [{ "ids": [...] }] } ]
-  }
+  "id": "42", "name": "四级数据库工程师", "grade": 4, "timeMin": 90,
+  "parts":   [ { "id": 1, "name": "操作系统原理-单选题", "sections": [...] } ],
+  "questions": [ { "id", "kind", "score", "half", "part", "partName",
+                   "sec", "secName", "stem", "options", "letters",
+                   "refAnswer", "fills", "expl", "images" } ],
+  "papers":  [ { "ver", "group", "date", "sections": [{ "ids": [...] }] } ]
 }
 ```
+
+> 题库与图片**不纳入版本控制**（版权归第三方）。克隆后需自行运行导出脚本生成本地数据。
 
 - `kind`：`single` | `multi` | `fill` | `essay`
 - `letters`：正确选项字母（多选去重排序）
