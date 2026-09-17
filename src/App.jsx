@@ -5,6 +5,7 @@ import RunView from './RunView.jsx'
 import { Tag, ProgressBar, Icon, Loading, Empty, Highlight } from './components.jsx'
 import { grade, KIND_LABEL } from './grading'
 import * as api from './api.js'
+import { flush, pendingCount } from './offlineQueue.js'
 import Login from './Login.jsx'
 import Records from './Records.jsx'
 import WeakPoints from './WeakPoints.jsx'
@@ -52,6 +53,8 @@ export default function App() {
   const examLeftRef = useRef(0)
   const picksRef = useRef({})
   const resultsRef = useRef({})
+  const justAnsweredRef = useRef(null)
+  const goRef = useRef(null)
 
   // 错题本
   const [wrong, setWrong] = useState(null)
@@ -83,6 +86,15 @@ export default function App() {
   const [theme, setTheme] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light',
   )
+  // 离线待同步条数 + 练习偏好（答完自动下一题）
+  const [pending, setPending] = useState(0)
+  const [autoNext, setAutoNext] = useState(() => {
+    try {
+      return localStorage.getItem('ncre-autonext') === '1'
+    } catch {
+      return false
+    }
+  })
 
   // 解析懒加载：id -> 完整题目（仅含被展开过解析的题）
   const [details, setDetails] = useState({})
@@ -163,6 +175,27 @@ export default function App() {
       localStorage.setItem('ncre-theme', theme)
     } catch {}
   }, [theme])
+
+  // 离线队列：联网自动补传 + 侧边栏计数
+  useEffect(() => {
+    const update = () => setPending(pendingCount())
+    update()
+    const onOnline = () => {
+      flush().then(update).catch(update)
+    }
+    window.addEventListener('online', onOnline)
+    window.addEventListener('ncre:outbox', update)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('ncre:outbox', update)
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ncre-autonext', autoNext ? '1' : '0')
+    } catch {}
+  }, [autoNext])
 
   const refreshStats = useCallback(() => {
     if (!bank) return
@@ -496,8 +529,11 @@ export default function App() {
   }, [items])
 
   const rawItem = items[idx]
+  // 单题聚焦（?q= 直达 / 笔记跳转）优先；否则取当前题目集合的当前题。
+  // 否则聚焦态的 onPick/onCheck 会因 App 级 item 为空而失效（只能看不能答）。
+  const baseItem = focusItem || rawItem
   // 合并懒加载到的解析，保持展示层字段完整
-  const item = rawItem && details[rawItem.id] ? { ...rawItem, ...details[rawItem.id] } : rawItem
+  const item = baseItem && details[baseItem.id] ? { ...baseItem, ...details[baseItem.id] } : baseItem
 
   // 解析懒加载：解析区块一旦可见（判分后 revealed=true，或用户点开）就拉一次全量。
   // 原先只在 onToggleShow 里取，但判分时 revealed 已置 true，用户不会再点按钮，
@@ -523,6 +559,7 @@ export default function App() {
     async (r) => {
       if (!item) return
       setResults((s) => ({ ...s, [item.id]: { ...r, revealed: true } }))
+      justAnsweredRef.current = item.id
       // 本题已重新作答 → 取消「待重刷」标记，结果立即展示
       setFreshIds((prev) => {
         if (!prev.has(item.id)) return prev
@@ -641,6 +678,22 @@ export default function App() {
     },
     [items.length, mode, item, displayResults, wrong],
   )
+  goRef.current = go
+
+  // 答完自动下一题（仅分类 / 随机练习；错题本保持手动）
+  useEffect(() => {
+    if (!autoNext) return
+    if (mode !== 'category' && mode !== 'random') return
+    if (!item || justAnsweredRef.current !== item.id) return
+    if (!displayResults[item.id]) return
+    // 注意：解析懒加载会触发 item 变化并让本 effect 重跑（清理上一个 timer）。
+    // 因此不能在这里提前清 justAnsweredRef，否则重跑后不再排程、永不前进。
+    const t = setTimeout(() => {
+      justAnsweredRef.current = null
+      if (goRef.current) goRef.current(1)
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [autoNext, mode, item, displayResults])
 
   // 切题定位：把题卡顶部对齐到吸顶 header 下方，
   // 让下一题的题干/选项/提交按钮直接可见 —— 而不是滚回页面最顶部
@@ -717,6 +770,11 @@ export default function App() {
       return m
     })
     api.postNote(id, text || '').catch(() => {})
+  }, [])
+
+  const saveExpl = useCallback((id, text) => {
+    setDetails((d) => ({ ...d, [id]: { ...(d[id] || {}), expl: text } }))
+    api.postExpl(id, text).catch(() => {})
   }, [])
 
   const doReset = useCallback(
@@ -811,6 +869,9 @@ export default function App() {
         onLogout={doLogout}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        pending={pending}
+        autoNext={autoNext}
+        onToggleAutoNext={() => setAutoNext((v) => !v)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -941,6 +1002,7 @@ export default function App() {
                 results={displayResults}
               notes={notes}
               onNote={saveNote}
+              onExpl={saveExpl}
                 marked={marked}
                 details={details}
                 onPick={onPick}
@@ -1094,6 +1156,7 @@ export default function App() {
                   results={displayResults}
               notes={notes}
               onNote={saveNote}
+              onExpl={saveExpl}
                   marked={marked}
                   details={details}
                   onPick={onPick}
@@ -1315,6 +1378,7 @@ export default function App() {
               results={displayResults}
               notes={notes}
               onNote={saveNote}
+              onExpl={saveExpl}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -1357,6 +1421,7 @@ export default function App() {
               results={displayResults}
               notes={notes}
               onNote={saveNote}
+              onExpl={saveExpl}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -1409,6 +1474,7 @@ export default function App() {
               results={displayResults}
               notes={notes}
               onNote={saveNote}
+              onExpl={saveExpl}
               marked={marked}
               details={details}
               onPick={onPick}
@@ -1555,6 +1621,7 @@ export default function App() {
                 results={displayResults}
               notes={notes}
               onNote={saveNote}
+              onExpl={saveExpl}
                 marked={marked}
                 details={details}
                 onPick={onPick}
@@ -1654,6 +1721,7 @@ export default function App() {
               results={displayResults}
               notes={notes}
               onNote={saveNote}
+              onExpl={saveExpl}
               marked={marked}
               details={details}
               locked={locked}

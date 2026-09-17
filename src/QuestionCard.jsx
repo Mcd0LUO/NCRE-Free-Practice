@@ -5,16 +5,20 @@ import { RichText, Tag, Verdict, Icon } from './components.jsx'
 export default function QuestionCard({
   item, index, total, pick, result, locked = false,
   onPick, onFill, onSelf, onCheck, onToggleShow, marked, onMark,
-  note = '', onNote,
+  note = '', onNote, onExpl,
 }) {
   const [noteOpen, setNoteOpen] = useState(false)
   const [draft, setDraft] = useState(note || '')
   const [copied, setCopied] = useState(false)
+  const [explOpen, setExplOpen] = useState(false)
+  const [explDraft, setExplDraft] = useState('')
 
   useEffect(() => {
     setDraft(note || '')
     setNoteOpen(false)
     setCopied(false)
+    setExplOpen(false)
+    setExplDraft('')
   }, [item.id, note])
 
   const copyLink = () => {
@@ -322,10 +326,60 @@ export default function QuestionCard({
                 </div>
               )}
               <div>
-                <p className="mb-1 text-xs font-medium text-gray-600">解析</p>
-                <div className="n-measure whitespace-pre-wrap text-sm leading-6 text-[#37352f]">
-                  <RichText text={item.expl} />
+                <div className="mb-1 flex items-center gap-2">
+                  <p className="text-xs font-medium text-gray-600">解析</p>
+                  {onExpl && !explOpen && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExplDraft(item.expl || '')
+                        setExplOpen(true)
+                      }}
+                      className="n-btn px-1.5 py-0.5 text-[11px] text-[#2eaadc]"
+                    >
+                      {item.expl ? '编辑解析' : '补写解析'}
+                    </button>
+                  )}
                 </div>
+                {item.expl ? (
+                  <div className="n-measure whitespace-pre-wrap text-sm leading-6 text-[#37352f]">
+                    <RichText text={item.expl} />
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">
+                    原题库未提供解析{onExpl ? '，可自行补写。' : '。'}
+                  </p>
+                )}
+                {onExpl && explOpen && (
+                  <div className="mt-2">
+                    <textarea
+                      value={explDraft}
+                      onChange={(e) => setExplDraft(e.target.value)}
+                      rows={4}
+                      placeholder="写下本题的解析…"
+                      className="n-input w-full px-3 py-2 text-sm"
+                    />
+                    <div className="mt-1.5 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onExpl(explDraft.trim())
+                          setExplOpen(false)
+                        }}
+                        className="rounded-md bg-[#2eaadc] px-3 py-1 text-xs font-medium text-white hover:bg-[#2898c4]"
+                      >
+                        保存解析
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExplOpen(false)}
+                        className="n-btn border border-gray-200 px-3 py-1 text-xs text-gray-600"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

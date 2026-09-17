@@ -125,6 +125,18 @@ function ExportRow() {
   )
 }
 
+// 练习偏好：答完自动下一题
+function AutoNextRow({ on, onToggle }) {
+  return (
+    <div className="mt-2 flex items-center gap-2 border-t border-gray-200 pt-2">
+      <label className="flex cursor-pointer items-center gap-2 text-[11px] text-gray-500">
+        <input type="checkbox" checked={on} onChange={onToggle} />
+        答完自动下一题
+      </label>
+    </div>
+  )
+}
+
 // 深色模式切换
 function ThemeRow({ theme, onToggle }) {
   return (
@@ -152,7 +164,7 @@ function LogoutRow({ onLogout }) {
 }
 
 // 左侧固定侧边栏：米色背景 + 页面列表（Notion 文档结构）
-export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, reviewCount = 0, open, onClose, onReset, onLogout, theme, onToggleTheme }) {
+export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, reviewCount = 0, pending = 0, autoNext = false, onToggleAutoNext, open, onClose, onReset, onLogout, theme, onToggleTheme }) {
   const modes = [
     { id: 'category', label: '分类练习', icon: 'list', hint: '按知识点逐类攻克' },
     { id: 'review', label: '今日复习', icon: 'repeat', hint: '间隔重复：先清到期与错题' },
@@ -276,7 +288,11 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
             <ResetRow onReset={onReset} />
             <LogoutRow onLogout={onLogout} />
             <ExportRow />
+            {onToggleAutoNext && <AutoNextRow on={autoNext} onToggle={onToggleAutoNext} />}
             <ThemeRow theme={theme} onToggle={onToggleTheme} />
+            {pending > 0 && (
+              <p className="mt-2 text-[11px] text-[#dfab01]">离线待同步 {pending} 条（联网后自动补传）</p>
+            )}
           </div>
         )}
       </aside>

@@ -1,3 +1,5 @@
+import { postJSON } from './offlineQueue.js'
+
 const j = async (r) => {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText)
   return r.json()
@@ -43,12 +45,7 @@ export const getDetail = (bank, id) => {
 }
 export const search = (bank, q, kind) =>
   fetch('/api/search/' + bank + '?' + qs({ q, kind })).then(j)
-export const postMark = (id, on) =>
-  fetch('/api/mark', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, on }),
-  }).then(j)
+export const postMark = (id, on) => postJSON('/api/mark', { id, on })
 export const getBackups = () => fetch('/api/backups').then(j)
 export const postBackup = () => fetch('/api/backup', { method: 'POST' }).then(j)
 export const getStats = (bank) => fetch('/api/stats/' + bank).then(j)
@@ -59,12 +56,7 @@ export const getPaper = (bank, ver, group) => fetch('/api/paper/' + bank + '/' +
 export const getQuestions = (bank, params = {}) =>
   fetch('/api/questions?' + qs({ bank, ...params })).then(j)
 
-export const postAnswer = (body) =>
-  fetch('/api/answer', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }).then(j)
+export const postAnswer = (body) => postJSON('/api/answer', body)
 
 export const postReset = (body) =>
   fetch('/api/reset', {
@@ -86,20 +78,10 @@ export const getSessions = (bank) => fetch('/api/sessions' + (bank ? '?bank=' + 
 export const getDaily = (bank, days = 30) => fetch('/api/daily/' + bank + '?days=' + days).then(j)
 export const getRandom = (bank, params = {}) => fetch('/api/random/' + bank + '?' + qs(params)).then(j)
 export const getById = (id) => fetch('/api/byid/' + id).then(j)
-export const postNote = (id, text) =>
-  fetch('/api/note', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, text }),
-  }).then(j)
+export const postNote = (id, text) => postJSON('/api/note', { id, text })
 export const getNotes = (bank) => fetch('/api/notes/' + bank).then(j)
 export const getReview = (bank, limit = 50) => fetch('/api/review/' + bank + '?limit=' + limit).then(j)
-export const postExpl = (id, text) =>
-  fetch('/api/expl', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, text }),
-  }).then(j)
+export const postExpl = (id, text) => postJSON('/api/expl', { id, text })
 export const exportProgress = () => fetch('/api/export').then((r) => (r.ok ? r.blob() : Promise.reject(new Error('export failed'))))
 export const importProgress = (data) =>
   fetch('/api/import', {
@@ -108,9 +90,4 @@ export const importProgress = (data) =>
     body: JSON.stringify(data),
   }).then(j)
 
-export const postSession = (body) =>
-  fetch('/api/session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }).then(j)
+export const postSession = (body) => postJSON('/api/session', body)

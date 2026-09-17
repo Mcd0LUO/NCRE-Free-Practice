@@ -4,7 +4,7 @@ import { Empty, Loading } from './components.jsx'
 
 export default function RunView({
   items, idx, setIdx, picks, results, marked, locked = false, details,
-  notes, onNote,
+  notes, onNote, onExpl,
   onPick, onFill, onSelf, onCheck, onToggleShow, onMark,
   header, emptyTitle = '没有题目', emptyHint, footer,
 }) {
@@ -29,6 +29,7 @@ export default function RunView({
         marked={marked?.has(item.id)}
         note={notes ? notes[item.id] : ''}
         onNote={onNote ? (t) => onNote(item.id, t) : undefined}
+        onExpl={onExpl ? (t) => onExpl(item.id, t) : undefined}
         locked={locked}
         onPick={onPick}
         onFill={onFill}
