@@ -75,6 +75,7 @@ article {
 }
 
 /* ---------- 深色模式（html.dark） ---------- */
+:root { color-scheme: light; }
 html.dark { color-scheme: dark; }
 html.dark body { background: #1a1a1a; color: #e8e6e3; }
 html.dark .bg-white { background-color: #252525 !important; }

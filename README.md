@@ -5,21 +5,101 @@ Node + Vite + React + Tailwind 的本地刷题应用。题库为全国计算机�
 
 仅供个人学习交流使用。
 
-## 启动
+## 快速开始
+
+### 一、本地跑起来
 
 ```bash
-cd ncre-app
-npm install          # 首次
-npm run dev          # 同时起后端 + 前端
+git clone <仓库地址>
+cd <项目目录>
+npm install      # 首次
+npm run dev      # 同时起后端 + 前端
 ```
 
 - 前端（Vite）：http://127.0.0.1:5180
 - 后端（Express）：http://127.0.0.1:5181
 
-Vite 已把 `/api` 与 `/images` 代理到后端，所以只需访问前端 5180。
+Vite 已把 `/api` 与 `/images` 代理到后端，所以**只访问 5180 即可**。
+默认**没有登录口令**，打开就能用（适合本机 / 内网自用）。
 
 单起：`npm run dev:server` / `npm run dev:web`
-生产构建：`npm run build`（产物在 `dist/`，后端会自动托管它）
+
+### 二、登录口令（可选）
+
+默认 `NCRE_USER=admin`、`NCRE_PASS` 为空 = **鉴权关闭**（无密码）。
+要开启登录，在项目根目录建 `.env`（权限 600；已被 `.gitignore` 忽略，不会入库）：
+
+```env
+NCRE_USER=admin
+NCRE_PASS=换成你自己的口令
+NCRE_SECRET=随机 64 位十六进制
+```
+
+```bash
+chmod 600 .env
+openssl rand -hex 32        # 生成 NCRE_SECRET
+```
+
+- 开启后：登录页用户名为 `NCRE_USER`、密码为 `NCRE_PASS`，登录后 30 天免登 Cookie；
+- `NCRE_SECRET` 用于给会话 Cookie 做 HMAC 签名，**改掉它所有已登录设备立即失效**；
+- 未登录时 `/api/*` 与 `/images/*` 一律 401；登录失败同 IP 15 分钟超 8 次会被限流。
+
+### 三、生产模式
+
+```bash
+npm run build         # 产物在 dist/
+node server/index.js  # 后端托管 dist/，默认监听 127.0.0.1:5181
+```
+
+端口可用环境变量 `PORT` 覆盖。后端只监听回环地址，建议前面套 nginx 反代 + HTTPS。
+
+### 四、部署示例（systemd + nginx）
+
+`/etc/systemd/system/ncre.service`：
+
+```ini
+[Unit]
+Description=NCRE Quiz
+After=network-online.target
+
+[Service]
+User=<运行用户>
+WorkingDirectory=<项目绝对路径>
+EnvironmentFile=-<项目绝对路径>/.env
+Environment=PORT=5181
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ncre.service
+```
+
+nginx（域名换成你自己的）：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name study.example.com;      # 换成你的域名
+
+    ssl_certificate     /path/fullchain.pem;
+    ssl_certificate_key /path/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:5181;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+> 数据都在 `server/progress.json`（运行时生成，已 gitignore）。换机 / 备份用侧边栏「导出进度」。
+> **谁部署谁就是服务端**：域名、口令、证书都只配在自己机器上，仓库里不含任何部署信息。
 
 ## 功能
 
@@ -138,7 +218,7 @@ Vite 已把 `/api` 与 `/images` 代理到后端，所以只需访问前端 5180
 - 四级题库**几乎没有解析**（原库只有 24 条），三级有 1645 条
 - 三级有 48 道主观题（设计与应用题）无标准答案，需自评
 - 四级 ver 64/65 的 group 11-15 共 10 套卷在原库中只含数据库原理部分
-- 单用户本地应用，无鉴权；`progress.json` 直接存盘
+- 单用户应用；默认无鉴权，开启访问口令见「快速开始」；`progress.json` 直接存盘
 
 ## 版本
 
@@ -192,6 +272,9 @@ NCRE_SECRET=<随机 64 位十六进制>
 - 2026-09-17 练习偏好「答完自动下一题」（分类 / 随机，错题本保持手动）。
 - 2026-09-17 解析补写（题内编辑）与批量导入脚本；周报小结。
 - 2026-09-17 修复 ?q= 直达题只能看不能答；修复自动下一题被解析懒加载取消。
+
+- 2026-09-17 修复浅色页面滚动条变黑：color-scheme 默认 light，仅深色模式为 dark。
+- 2026-09-17 README 补全「快速开始 / 默认登录 / 部署示例」。
 
 ## 声明
 
