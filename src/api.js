@@ -93,6 +93,13 @@ export const postNote = (id, text) =>
     body: JSON.stringify({ id, text }),
   }).then(j)
 export const getNotes = (bank) => fetch('/api/notes/' + bank).then(j)
+export const getReview = (bank, limit = 50) => fetch('/api/review/' + bank + '?limit=' + limit).then(j)
+export const postExpl = (id, text) =>
+  fetch('/api/expl', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, text }),
+  }).then(j)
 export const exportProgress = () => fetch('/api/export').then((r) => (r.ok ? r.blob() : Promise.reject(new Error('export failed'))))
 export const importProgress = (data) =>
   fetch('/api/import', {

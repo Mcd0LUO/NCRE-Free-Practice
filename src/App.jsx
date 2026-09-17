@@ -58,6 +58,12 @@ export default function App() {
 
   const [wrongSec, setWrongSec] = useState(0)
 
+  // 今日复习（间隔重复）
+  const [reviewItems, setReviewItems] = useState(null)
+  const [reviewTotal, setReviewTotal] = useState(0)
+  const [reviewGraduated, setReviewGraduated] = useState(0)
+  const [reviewLoading, setReviewLoading] = useState(false)
+
   // 标记题
   const [markedList, setMarkedList] = useState(null)
 
@@ -281,6 +287,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, bank])
 
+  // ---------- 今日复习 ----------
+  const loadReview = useCallback(() => {
+    if (!bank) return
+    setReviewLoading(true)
+    api
+      .getReview(bank, 100)
+      .then((r) => {
+        setReviewItems(r.items)
+        setReviewTotal(r.total)
+        setReviewGraduated(r.graduated || 0)
+        setFreshIds(new Set(r.items.map((x) => x.id)))
+        resetRun()
+      })
+      .catch(() => setReviewItems([]))
+      .finally(() => setReviewLoading(false))
+  }, [bank])
+
+  useEffect(() => {
+    if (mode !== 'review' || !bank) return
+    loadReview()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, bank])
+
   // ---------- 笔记列表 ----------
   useEffect(() => {
     if (mode !== 'notes' || !bank) return
@@ -376,12 +405,13 @@ export default function App() {
       const all = wrong ?? EMPTY
       return wrongSec ? all.filter((x) => x.sec === wrongSec) : all
     }
+    if (mode === 'review') return reviewItems ?? EMPTY
     if (mode === 'random') return randomItems ?? EMPTY
     if (mode === 'marked') return markedList ?? EMPTY
     if (mode === 'exam') return exam?.items ?? EMPTY
     if (mode === 'search') return searchOpen ? [searchOpen] : EMPTY
     return EMPTY
-  }, [mode, list, wrong, wrongSec, randomItems, markedList, exam, searchOpen])
+  }, [mode, list, wrong, wrongSec, reviewItems, randomItems, markedList, exam, searchOpen])
 
   // A2: 倒计时归零自动交卷（此前只显示「时间到」，并不会真正收卷）
   useEffect(() => {
@@ -774,6 +804,7 @@ export default function App() {
         stats={stats}
         wrongCount={stats?.wrong || 0}
         markedCount={marked.size}
+        reviewCount={stats?.reviewDue || 0}
         open={sidebar}
         onClose={() => setSidebar(false)}
         onReset={doReset}
@@ -1182,6 +1213,44 @@ export default function App() {
 
           {/* ---------- 成绩记录 ---------- */}
           {mode === 'records' && <Records bank={bank} />}
+
+          {/* ---------- 今日复习 ---------- */}
+          {mode === 'review' && (
+            reviewLoading && !reviewItems ? (
+              <Loading text="读取复习队列…" />
+            ) : reviewItems && reviewItems.length ? (
+              <RunView
+                items={items}
+                idx={idx}
+                setIdx={setIdx}
+                picks={picks}
+                results={displayResults}
+                marked={marked}
+                details={details}
+                onPick={onPick}
+                onFill={onFill}
+                onSelf={onSelf}
+                onCheck={onCheck}
+                onToggleShow={onToggleShow}
+                onMark={onMark}
+                emptyTitle="今日复习已清空"
+                emptyHint="没有到期需要复习的题，明天再来。"
+                header={
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm">
+                    <span className="text-gray-600">
+                      待复习 <span className="font-mono">{reviewTotal}</span> 道 · 本轮 <span className="font-mono">{items.length}</span> 道
+                      {reviewGraduated > 0 && <span className="text-gray-400"> · 已毕业 {reviewGraduated}</span>}
+                    </span>
+                    <button type="button" onClick={loadReview} className="n-btn ml-auto border border-gray-200 px-2">
+                      刷新队列
+                    </button>
+                  </div>
+                }
+              />
+            ) : (
+              <Empty title="今日复习已清空" hint="没有到期需要复习的题，明天再来。答对连对 3 次的题会「毕业」不再出现。" />
+            )
+          )}
 
           {/* ---------- 随机练习 / 智能组卷 ---------- */}
           {mode === 'random' && !randomItems && (

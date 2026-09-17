@@ -152,9 +152,10 @@ function LogoutRow({ onLogout }) {
 }
 
 // 左侧固定侧边栏：米色背景 + 页面列表（Notion 文档结构）
-export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, open, onClose, onReset, onLogout, theme, onToggleTheme }) {
+export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wrongCount = 0, markedCount = 0, reviewCount = 0, open, onClose, onReset, onLogout, theme, onToggleTheme }) {
   const modes = [
     { id: 'category', label: '分类练习', icon: 'list', hint: '按知识点逐类攻克' },
+    { id: 'review', label: '今日复习', icon: 'repeat', hint: '间隔重复：先清到期与错题' },
     { id: 'random', label: '随机练习', icon: 'target', hint: '随机抽题 / 智能组卷' },
     { id: 'exam', label: '模拟考试', icon: 'clock', hint: '限时成套做卷' },
     { id: 'wrong', label: '错题本', icon: 'target', hint: '只刷做错的题' },
@@ -240,6 +241,11 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
                   <Icon name={m.icon} className="h-3.5 w-3.5" />
                 </span>
                 <span className="min-w-0 flex-1">{m.label}</span>
+                {m.id === 'review' && reviewCount > 0 && (
+                  <span className="shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 font-mono text-[11px] text-[#2eaadc]">
+                    {reviewCount}
+                  </span>
+                )}
                 {m.id === 'wrong' && wrongCount > 0 && (
                   <span className="shrink-0 rounded-md bg-red-50 px-1.5 py-0.5 font-mono text-[11px] text-[#eb5757]">
                     {wrongCount}

@@ -13,6 +13,12 @@ const PORT = process.env.PORT || 5181
 const app = express()
 app.disable('x-powered-by') // 不暴露技术栈
 app.set('trust proxy', 'loopback') // 经 nginx 反代，req.ip 取 X-Forwarded-For
+
+// 间隔重复（复习）参数：答对连对次数决定下次到期时间；连对满 GRADUATE_STREAK 即「毕业」
+const GRADUATE_STREAK = 3
+const REVIEW_INTERVALS = [1, 3, 7, 14, 30] // 天
+const reviewDueAt = (rec) => (rec.dueT != null ? rec.dueT : rec.state === 'ok' ? Infinity : 0)
+const isGraduated = (rec) => rec.state === 'ok' && (rec.streak || 0) >= GRADUATE_STREAK
 app.use(compression()) // JSON 体积大，gzip 后约省 78-87%
 app.use(express.json({ limit: '4mb' }))
 
@@ -131,7 +137,7 @@ console.log('[server] banks:', Object.keys(banks).map(k =>
   k + '=' + banks[k].name + '(' + banks[k].questionIds.length + '题)').join(', '))
 
 // ---------- progress store (single user, flat file) ----------
-let progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exams: [], notes: {} }
+let progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exams: [], notes: {}, expl: {} }
 try {
   if (fs.existsSync(PROG)) progress = { ...progress, ...JSON.parse(fs.readFileSync(PROG, 'utf8')) }
 } catch (e) { console.warn('[server] progress reset:', e.message) }
@@ -140,6 +146,7 @@ progress.answers ||= {}
 progress.marks ||= {}
 progress.wrong ||= {}
 progress.notes ||= {}
+progress.expl ||= {}
 progress.sessions ||= []
 progress.exams ||= []
 if (progress.exam && !progress.exams.length) progress.exams.push(progress.exam)
@@ -255,7 +262,8 @@ app.get('/api/search/:bank', (req, res) => {
 app.get('/api/questions/:bank/:id', (req, res) => {
   const it = byId[req.params.bank]?.get(+req.params.id)
   if (!it) return res.status(404).json({ error: 'not found' })
-  res.json({ ...it, note: progress.notes[+req.params.id]?.text || '' })
+  const override = progress.expl[+req.params.id]?.text
+  res.json({ ...it, note: progress.notes[+req.params.id]?.text || '', expl: override || it.expl || '' })
 })
 
 // 自评题型：不计入客观正确率
@@ -326,9 +334,19 @@ app.get('/api/stats/:bank', (req, res) => {
     }
   }
 
+  // 今日待复习：未毕业且已到期的题
+  const nowMs = Date.now()
+  let reviewDue = 0
+  for (const [idStr, rec] of Object.entries(progress.answers)) {
+    const id = +idStr
+    if (!map.has(id) || isGraduated(rec)) continue
+    if (reviewDueAt(rec) <= nowMs) reviewDue++
+  }
+
   res.json({
     total: b.questionIds.length,
     done,
+    reviewDue,
     // 正确率只统计可自动判分的题型，主观题自评单独看
     objective: { ...obj, accuracy: obj.done ? obj.right / obj.done : 0 },
     subjective: sub,
@@ -459,20 +477,51 @@ app.post('/api/answer', (req, res) => {
   const { bank, id, ok, score, state, given, letters, fills } = req.body || {}
   if (!bank || id == null) return res.status(400).json({ error: 'bank and id required' })
   const v = state === 'ok' || state === 'part' || state === 'bad' ? state : ok ? 'ok' : 'bad'
+  const prev = progress.answers[id] || {}
+  const streak = v === 'ok' ? (prev.streak || 0) + 1 : 0
+  const days = REVIEW_INTERVALS[Math.min(Math.max(streak - 1, 0), REVIEW_INTERVALS.length - 1)]
+  const dueT = v === 'ok' ? Date.now() + days * 86400000 : Date.now()
   progress.answers[id] = {
-    bank, ok: v === 'ok', state: v, score: score || 0, given, letters, fills, t: Date.now(),
+    bank, ok: v === 'ok', state: v, score: score || 0, given, letters, fills,
+    t: Date.now(), streak, dueT,
   }
   // 只有完全答对才移出错题本；部分正确仍需复习
   if (v === 'ok') delete progress.wrong[id]
   else progress.wrong[id] = { bank, state: v, t: Date.now() }
   saveProgress()
-  res.json({ ok: true, state: v })
+  res.json({ ok: true, state: v, streak, dueT })
+})
+
+// ---------- 复习队列（间隔重复） ----------
+app.get('/api/review/:bank', (req, res) => {
+  const map = byId[req.params.bank]
+  if (!map) return res.status(404).json({ error: 'bank not found' })
+  const limit = Math.min(300, Math.max(1, parseInt(req.query.limit, 10) || 50))
+  const now = Date.now()
+  const due = []
+  for (const [idStr, rec] of Object.entries(progress.answers)) {
+    const id = +idStr
+    if (!map.has(id) || isGraduated(rec)) continue
+    if (reviewDueAt(rec) <= now) due.push({ id, dueT: reviewDueAt(rec), streak: rec.streak || 0, state: rec.state })
+  }
+  due.sort((a, b) => a.dueT - b.dueT || a.streak - b.streak)
+  const light = ({ expl, refAnswer, ...rest }) => rest
+  res.json({
+    total: due.length,
+    graduated: Object.values(progress.answers).filter(isGraduated).length,
+    items: due.slice(0, limit).map((d) => ({
+      ...light(map.get(d.id)),
+      streak: d.streak,
+      dueT: d.dueT,
+      verdict: d.state,
+    })),
+  })
 })
 
 app.post('/api/reset', (req, res) => {
   const { bank, scope, ids } = req.body || {}
   if (scope === 'all') {
-    progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exams: [], notes: {} }
+    progress = { answers: {}, marks: {}, wrong: {}, sessions: [], settings: {}, exams: [], notes: {}, expl: {} }
   } else if (scope === 'items') {
     // 只清掉指定题目（用于「重置本场考试」），不影响其它进度
     for (const id of Array.isArray(ids) ? ids : []) {
@@ -637,6 +686,17 @@ app.get('/api/byid/:id', (req, res) => {
 })
 
 // ---------- 题目笔记 ----------
+// ---------- 解析补充（题内手写 / 覆盖空解析） ----------
+app.post('/api/expl', (req, res) => {
+  const { id, text } = req.body || {}
+  if (id == null) return res.status(400).json({ error: 'id required' })
+  const t = String(text == null ? '' : text).slice(0, 8000)
+  if (!t.trim()) delete progress.expl[id]
+  else progress.expl[id] = { text: t, t: Date.now() }
+  saveProgress()
+  res.json({ ok: true, expl: t.trim() ? t : '' })
+})
+
 app.post('/api/note', (req, res) => {
   const { id, text } = req.body || {}
   if (id == null) return res.status(400).json({ error: 'id required' })

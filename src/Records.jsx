@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Tag, Loading, Empty } from './components.jsx'
+import { Tag, Loading, Empty, ProgressBar } from './components.jsx'
 import * as api from './api.js'
 
 const bankLabel = (b) => (b === '42' ? '四级' : b === '36' ? '三级' : b)
@@ -7,14 +7,17 @@ const bankLabel = (b) => (b === '42' ? '四级' : b === '36' ? '三级' : b)
 export default function Records({ bank }) {
   const [sessions, setSessions] = useState(null)
   const [daily, setDaily] = useState(null)
+  const [stats, setStats] = useState(null)
 
   useEffect(() => {
     if (!bank) return
     let alive = true
     setSessions(null)
     setDaily(null)
+    setStats(null)
     api.getSessions(bank).then((s) => alive && setSessions(s)).catch(() => alive && setSessions([]))
     api.getDaily(bank, 30).then((d) => alive && setDaily(d)).catch(() => alive && setDaily([]))
+    api.getStats(bank).then((s) => alive && setStats(s)).catch(() => {})
     return () => { alive = false }
   }, [bank])
 
@@ -24,6 +27,15 @@ export default function Records({ bank }) {
   const weekDone = last7.reduce((a, d) => a + d.done, 0)
   const weekRight = last7.reduce((a, d) => a + d.right, 0)
   const maxDone = Math.max(1, ...days.map((d) => d.done))
+  const bestDay = last7.reduce((a, d) => (d.done > (a?.done || 0) ? d : a), null)
+  const weak = (stats?.sections || [])
+    .map((s) => {
+      const done = s.right + s.partial + s.wrong
+      return { ...s, done, acc: done ? s.right / done : 0 }
+    })
+    .filter((s) => s.done > 0 && (s.objectiveTotal || 0) >= 3)
+    .sort((a, b) => a.acc - b.acc)
+    .slice(0, 3)
 
   return (
     <div className="space-y-5">
@@ -55,6 +67,38 @@ export default function Records({ bank }) {
           <span>{days[0]?.date?.slice(5)}</span>
           <span>{days[days.length - 1]?.date?.slice(5)}</span>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-medium text-gray-700">本周小结</h2>
+        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
+          <span>题量 <span className="font-mono">{weekDone}</span></span>
+          <span>正确率 <span className="font-mono">{weekDone ? Math.round((weekRight / weekDone) * 100) : 0}%</span></span>
+          {bestDay && bestDay.done > 0 && (
+            <span>
+              最佳一天 <span className="font-mono">{bestDay.date.slice(5)}</span>
+              （<span className="font-mono">{bestDay.done}</span> 题）
+            </span>
+          )}
+          {stats?.reviewDue > 0 && (
+            <span className="text-[#2eaadc]">今日待复习 <span className="font-mono">{stats.reviewDue}</span></span>
+          )}
+        </div>
+        {weak.length > 0 && (
+          <ul className="mt-3 space-y-1.5">
+            {weak.map((s) => (
+              <li key={s.part + ':' + s.sec} className="flex items-center gap-3 text-sm">
+                <span className="min-w-0 flex-1 truncate text-[#37352f]" title={s.partName + ' / ' + s.secName}>
+                  {s.secName}
+                </span>
+                <span className="w-24 shrink-0"><ProgressBar value={s.right} max={s.done} /></span>
+                <span className="w-10 shrink-0 text-right font-mono text-xs text-[#eb5757]">
+                  {Math.round(s.acc * 100)}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>
