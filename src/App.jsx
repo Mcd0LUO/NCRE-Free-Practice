@@ -500,12 +500,8 @@ export default function App() {
         n.delete(item.id)
         return n
       })
-      // 错题本模式下答对：立即从列表移除并顺位到下一题（即时反馈 + 连续重刷）
-      if (mode === 'wrong' && r.state === 'ok') {
-        const nextLen = (wrong || []).filter((x) => x.id !== item.id).length
-        setWrong((list) => (list || []).filter((x) => x.id !== item.id))
-        setIdx((i) => Math.max(0, Math.min(i, nextLen - 1)))
-      }
+      // 错题本答对后不立即移除：先让用户看到判分与解析，
+      // 等点「下一题」时再移出错题本（见 go()）。
       const pick = picks[item.id] || {}
       try {
         await api.postAnswer({
@@ -522,7 +518,7 @@ export default function App() {
       }
       refreshStats()
     },
-    [item, picks, wrong, bank, refreshStats, mode],
+    [item, picks, bank, refreshStats, mode],
   )
 
   // 交卷后锁定作答。必须在 onCheck 之前声明：onCheck 的闭包会读取它，
@@ -599,13 +595,21 @@ export default function App() {
 
   const go = useCallback(
     (d) => {
+      // 错题本：答对后点「下一题」才移出，并让后一题顺位补上（不跳号）
+      if (d > 0 && mode === 'wrong' && item && displayResults[item.id]?.state === 'ok') {
+        const id = item.id
+        const nextLen = (wrong || []).filter((x) => x.id !== id).length
+        setWrong((list) => (list || []).filter((x) => x.id !== id))
+        setIdx((i) => Math.max(0, Math.min(i, nextLen - 1)))
+        return
+      }
       setIdx((i) => {
         const n = i + d
         if (n < 0 || n >= items.length) return i
         return n
       })
     },
-    [items.length],
+    [items.length, mode, item, displayResults, wrong],
   )
 
   // 切题定位：把题卡顶部对齐到吸顶 header 下方，
