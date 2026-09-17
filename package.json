@@ -1,7 +1,7 @@
 {
   "name": "ncre-quiz",
   "private": true,
-  "version": "1.0.0",
+  "version": "2026.9.17-1",
   "type": "module",
   "scripts": {
     "dev": "concurrently -n server,web -c cyan,magenta \"node server/index.js\" \"vite\"",

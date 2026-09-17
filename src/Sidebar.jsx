@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Icon, ProgressBar } from './components.jsx'
 import * as api from './api.js'
+import { APP_VERSION } from './version.js'
 
 // 进度备份：明文单文件，误清即不可恢复，这里给一个手动快照入口
 function BackupRow() {
@@ -196,6 +197,7 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
       >
         <div className="flex items-center gap-2 px-4 py-3">
           <span className="font-semibold text-[#37352f]">NCRE 刷题</span>
+          <span className="text-[10px] text-gray-400">{APP_VERSION}</span>
           <button
             type="button"
             onClick={onClose}
