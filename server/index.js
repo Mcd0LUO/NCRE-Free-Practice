@@ -113,6 +113,13 @@ app.use((req, res, next) => {
 // ---------- banks ----------
 // 按等级分文件：bank_<id>.json。每库独立读取，互不影响，
 // 新增等级只需放入文件，无需改动这里。
+// 填空题空位标记（题干中 【n】 处）——由反推生成，可选；存在则并入题目
+let blanks = {}
+try {
+  const bp = path.join(DATA, 'blanks.json')
+  if (fs.existsSync(bp)) blanks = JSON.parse(fs.readFileSync(bp, 'utf8'))
+} catch (e) { console.warn('[server] blanks.json load failed:', e.message) }
+
 const banks = {}
 const byId = {}
 for (const f of fs.readdirSync(DATA)) {
@@ -121,6 +128,9 @@ for (const f of fs.readdirSync(DATA)) {
   const key = m[1]
   try {
     const b = JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'))
+    for (const q of b.questions) {
+      if (blanks[q.id]) q.blankStem = blanks[q.id]
+    }
     byId[key] = new Map(b.questions.map(q => [q.id, q]))
     b.questionIds = b.questions.map(q => q.id)
     delete b.questions   // 题目按需下发，避免常驻大对象

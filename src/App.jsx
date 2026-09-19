@@ -527,7 +527,11 @@ export default function App() {
     setExamSubmitted(false)
     setExamResult(null)
     setPicks(picks0)
-    setFreshIds(new Set(flat.map((x) => x.id)))
+    // 续考：只把「未作答」的题当新题（已答的显示判分结果）；新开考试才整卷当新题
+    const fresh = resume
+      ? flat.filter((x) => !resultsRef.current[x.id]).map((x) => x.id)
+      : flat.map((x) => x.id)
+    setFreshIds(new Set(fresh))
     setExam({ ...p, items: flat, startedAt })
     setExamLeft(left)
     api

@@ -35,6 +35,33 @@ export default function QuestionCard({
   // 注意：填空题数据里可能残留 letters 字段（无意义），仅选择题才用正确答案
   const cor = item.kind === 'single' || item.kind === 'multi' ? correctLetters(item) : ''
   const fillSlots = item.kind === 'fill' ? (item.fills || []).filter((s) => s.alts?.length) : []
+  // 题干里已标出【n】空位时，就地渲染输入框
+  const inlineBlanks = item.kind === 'fill' && !!item.blankStem && /【\d+】/.test(item.blankStem)
+  const renderInlineBlanks = (text) =>
+    String(text)
+      .split(/(【\d+】)/)
+      .map((part, i) => {
+        const mm = part.match(/^【(\d+)】$/)
+        if (!mm) return <React.Fragment key={i}>{part}</React.Fragment>
+        const n = +mm[1]
+        const per = result?.detail?.per?.find((x) => x.n === n)
+        const val = pick?.fills?.[n - 1] ?? ''
+        return (
+          <input
+            key={i}
+            value={val}
+            disabled={checked || locked}
+            onChange={(e) => onFill(n - 1, e.target.value)}
+            aria-label={'第 ' + n + ' 空作答'}
+            title={per && !per.ok ? '应为 ' + per.alts.join(' / ') : undefined}
+            style={{ width: Math.max(5, (val || '').length + 2) + 'ch' }}
+            className={
+              'mx-0.5 inline-block rounded-md border px-1.5 py-0.5 font-mono text-sm ' +
+              (per ? (per.ok ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50') : 'border-gray-200 bg-white')
+            }
+          />
+        )
+      })
   const checked = !!result
   const showExp = result?.revealed
   const pickLetters = pick?.letters || ''
@@ -116,7 +143,7 @@ export default function QuestionCard({
 
       {/* 题干 */}
       <div className="n-measure mb-4 whitespace-pre-wrap text-[15px] leading-7 text-[#37352f]">
-        <RichText text={item.stem} />
+        {inlineBlanks ? renderInlineBlanks(item.blankStem) : <RichText text={item.stem} />}
         {item.images?.length > 0 && null}
       </div>
 
@@ -184,7 +211,7 @@ export default function QuestionCard({
       )}
 
       {/* 填空 */}
-      {item.kind === 'fill' && (
+      {item.kind === 'fill' && !inlineBlanks && (
         <div className="space-y-2">
           {(item.fills || []).some((s) => s.alts?.length) ? (
             (item.fills || [])
