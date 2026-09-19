@@ -54,9 +54,9 @@ export default function QuestionCard({
             onChange={(e) => onFill(n - 1, e.target.value)}
             aria-label={'第 ' + n + ' 空作答'}
             title={per && !per.ok ? '应为 ' + per.alts.join(' / ') : undefined}
-            style={{ width: Math.max(5, (val || '').length + 2) + 'ch' }}
+            style={{ width: Math.max(9, (val || '').length + 2) + 'ch' }}
             className={
-              'mx-0.5 inline-block rounded-md border px-1.5 py-0.5 font-mono text-sm ' +
+              'mx-0.5 inline-block min-w-[7rem] rounded-md border px-2 py-0.5 font-mono text-sm ' +
               (per ? (per.ok ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50') : 'border-gray-200 bg-white')
             }
           />
