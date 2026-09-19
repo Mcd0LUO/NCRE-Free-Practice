@@ -3,7 +3,7 @@ import RunView from '../RunView.jsx'
 import { Tag, Icon, Loading, Empty, Highlight } from '../components.jsx'
 
 export default function SearchView({ ctx }) {
-  const { bank, mode, total, idx, setIdx, picks, results, setFreshIds, marked, notes, details, searchQ, setSearchQ, searchKind, setSearchKind, searchRes, searching, searchOpen, setSearchOpen, searchPart, setSearchPart, searchParts, searchItems, resetRun, displayResults, runSearch, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl } = ctx
+  const { bank, mode, total, idx, setIdx, picks, results, setFreshIds, marked, notes, details, searchQ, setSearchQ, searchKind, setSearchKind, searchRes, searching, searchOpen, setSearchOpen, searchPart, setSearchPart, searchParts, searchItems, resetRun, displayResults, runSearch, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl, onPrev, onNext, canPrev, canNext } = ctx
   return (
     <>
 {/* ---------- 全局搜索 ---------- */}
@@ -136,7 +136,7 @@ export default function SearchView({ ctx }) {
       idx={0}
       setIdx={() => {}}
       picks={picks}
-      results={displayResults}
+      results={displayResults} onPrev={onPrev} onNext={onNext} canPrev={canPrev} canNext={canNext}
     notes={notes}
     onNote={saveNote}
     onExpl={saveExpl}

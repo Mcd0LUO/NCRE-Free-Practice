@@ -4,7 +4,7 @@ import { Tag, Icon, Loading } from '../components.jsx'
 import * as api from '../api.js'
 
 export default function ExamView({ ctx }) {
-  const { banks, bank, mode, total, idx, setIdx, picks, setPicks, results, setResults, setFreshIds, marked, paperList, exam, setExam, setExamLeft, setExamSubmitted, examResult, setExamResult, savedExam, setSavedExam, notes, details, refreshStats, resetRun, displayResults, items, loadPaper, locked, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, runStats, currentBank, saveNote, saveExpl, examTimeUp } = ctx
+  const { banks, bank, mode, total, idx, setIdx, picks, setPicks, results, setResults, setFreshIds, marked, paperList, exam, setExam, setExamLeft, setExamSubmitted, examResult, setExamResult, savedExam, setSavedExam, notes, details, refreshStats, resetRun, displayResults, items, loadPaper, locked, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, runStats, currentBank, saveNote, saveExpl, examTimeUp, onPrev, onNext, canPrev, canNext } = ctx
   return (
     <>
 {/* ---------- 考试：选卷 ---------- */}
@@ -91,7 +91,7 @@ export default function ExamView({ ctx }) {
     idx={idx}
     setIdx={setIdx}
     picks={picks}
-    results={displayResults}
+    results={displayResults} onPrev={onPrev} onNext={onNext} canPrev={canPrev} canNext={canNext}
     notes={notes}
     onNote={saveNote}
     onExpl={saveExpl}

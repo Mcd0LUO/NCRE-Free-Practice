@@ -6,6 +6,7 @@ export default function QuestionCard({
   item, index, total, pick, result, locked = false,
   onPick, onFill, onSelf, onCheck, onToggleShow, marked, onMark,
   note = '', onNote, onExpl,
+  onPrev, onNext, canPrev = false, canNext = false,
 }) {
   const [noteOpen, setNoteOpen] = useState(false)
   const [draft, setDraft] = useState(note || '')
@@ -37,6 +38,30 @@ export default function QuestionCard({
   const pickLetters = pick?.letters || ''
 
   const kindTone = { single: 'blue', multi: 'yellow', fill: 'green', essay: 'gray' }[item.kind] || 'gray'
+
+  // 桌面端题内导航：与「确认答案 / 查看解析」同一行、右对齐；移动端用底部固定栏
+  const navBtns = onNext ? (
+    <div className="ml-auto hidden items-center gap-2 md:flex">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={!canPrev}
+        className="n-btn flex items-center gap-1 border border-gray-200 px-3 disabled:opacity-40"
+      >
+        <Icon name="chevronLeft" className="h-3.5 w-3.5" />
+        上一题
+      </button>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={!canNext}
+        className="n-btn flex items-center gap-1 border border-gray-200 px-3 disabled:opacity-40"
+      >
+        下一题
+        <Icon name="chevronRight" className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  ) : null
 
   return (
     <article className="group relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm md:p-6">
@@ -239,6 +264,7 @@ export default function QuestionCard({
               <button type="button" onClick={() => onSelf('bad')} className="n-btn border border-gray-200">
                 我答错了
               </button>
+              {navBtns}
             </div>
           )}
 
@@ -260,9 +286,12 @@ export default function QuestionCard({
       )}
 
       {locked && !checked && (
-        <p className="mt-3 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-500">
-          本场考试已交卷，不能再作答。
-        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <p className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            本场考试已交卷，不能再作答。
+          </p>
+          {navBtns}
+        </div>
       )}
 
       {/* B3: 已作答但未展开结果时，提示上次的选择 */}
@@ -278,9 +307,9 @@ export default function QuestionCard({
         </p>
       )}
 
-      {/* 确认按钮 */}
+      {/* 确认按钮（桌面端右侧并排 上一题 / 下一题） */}
       {!checked && !locked && item.kind !== 'essay' && (
-        <div className="mt-4">
+        <div className="mt-4 flex items-center gap-2">
           <button
             type="button"
             onClick={onCheck}
@@ -288,6 +317,7 @@ export default function QuestionCard({
           >
             确认答案
           </button>
+          {navBtns}
         </div>
       )}
 
@@ -384,15 +414,18 @@ export default function QuestionCard({
             </div>
           )}
 
-          {item.kind !== 'essay' && (
-            <button
-              type="button"
-              onClick={onToggleShow}
-              className="n-btn mt-3 px-0 text-[#2eaadc] hover:bg-transparent hover:underline"
-            >
-              {showExp ? '隐藏解析' : '查看解析'}
-            </button>
-          )}
+          <div className="mt-3 flex items-center gap-2">
+            {item.kind !== 'essay' && (
+              <button
+                type="button"
+                onClick={onToggleShow}
+                className="n-btn px-0 text-[#2eaadc] hover:bg-transparent hover:underline"
+              >
+                {showExp ? '隐藏解析' : '查看解析'}
+              </button>
+            )}
+            {navBtns}
+          </div>
         </div>
       )}
 

@@ -190,8 +190,8 @@ export default function Sidebar({ banks, bank, onBank, mode, onMode, stats, wron
       )}
       <aside
         className={
-          'fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-gray-200 bg-[#f7f6f3] ' +
-          'transition-colors duration-150 md:static md:z-auto ' +
+          'fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-[#f7f6f3] ' +
+          'transition-colors duration-150 md:z-30 ' +
           (open ? 'block' : 'hidden md:flex')
         }
       >

@@ -3,7 +3,7 @@ import RunView from '../RunView.jsx'
 import { Icon, Loading } from '../components.jsx'
 
 export default function CategoryPractice({ ctx }) {
-  const { mode, sel, setSel, kindFilter, setKindFilter, setList, total, page, loading, idx, setIdx, picks, results, marked, notes, details, displayResults, loadCategory, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl } = ctx
+  const { mode, sel, setSel, kindFilter, setKindFilter, setList, total, page, loading, idx, setIdx, picks, results, marked, notes, details, displayResults, loadCategory, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl, onPrev, onNext, canPrev, canNext } = ctx
   return (
     <>
 {/* ---------- 分类练习 ---------- */}
@@ -17,7 +17,7 @@ export default function CategoryPractice({ ctx }) {
         idx={idx}
         setIdx={setIdx}
         picks={picks}
-        results={displayResults}
+        results={displayResults} onPrev={onPrev} onNext={onNext} canPrev={canPrev} canNext={canNext}
     notes={notes}
     onNote={saveNote}
     onExpl={saveExpl}

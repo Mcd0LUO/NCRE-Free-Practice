@@ -3,7 +3,7 @@ import RunView from '../RunView.jsx'
 import { Tag, Icon } from '../components.jsx'
 
 export default function FocusView({ ctx }) {
-  const { idx, setIdx, picks, results, marked, notes, focusItem, setFocusItem, details, displayResults, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl } = ctx
+  const { idx, setIdx, picks, results, marked, notes, focusItem, setFocusItem, details, displayResults, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl, onPrev, onNext, canPrev, canNext } = ctx
   return (
     <>
 {/* 单题聚焦：?q= 直达 / 笔记跳转 */}
@@ -29,7 +29,7 @@ export default function FocusView({ ctx }) {
       idx={0}
       setIdx={() => {}}
       picks={picks}
-      results={displayResults}
+      results={displayResults} onPrev={onPrev} onNext={onNext} canPrev={canPrev} canNext={canNext}
     notes={notes}
     onNote={saveNote}
     onExpl={saveExpl}

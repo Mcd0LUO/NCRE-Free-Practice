@@ -856,7 +856,7 @@ export default function App() {
   }
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
 
-  const ctx = { EMPTY, authed, setAuthed, banks, setBanks, bank, setBank, stats, setStats, mode, setMode, sidebar, setSidebar, tree, setTree, sel, setSel, kindFilter, setKindFilter, list, setList, total, setTotal, page, setPage, loading, setLoading, idx, setIdx, picks, setPicks, results, setResults, freshIds, setFreshIds, marked, setMarked, hydrated, setHydrated, byIdRef, paperList, setPaperList, exam, setExam, examLeft, setExamLeft, examSubmitted, setExamSubmitted, examResult, setExamResult, savedExam, setSavedExam, runStatsRef, examLeftRef, picksRef, resultsRef, justAnsweredRef, goRef, wrong, setWrong, wrongSec, setWrongSec, reviewItems, setReviewItems, reviewTotal, setReviewTotal, reviewGraduated, setReviewGraduated, reviewLoading, setReviewLoading, markedList, setMarkedList, randomItems, setRandomItems, randomCount, setRandomCount, randomKind, setRandomKind, randomSmart, setRandomSmart, randomLoading, setRandomLoading, notes, setNotes, notesList, setNotesList, focusItem, setFocusItem, lightbox, setLightbox, theme, setTheme, pending, setPending, autoNext, setAutoNext, details, setDetails, searchQ, setSearchQ, searchKind, setSearchKind, searchRes, setSearchRes, searching, setSearching, searchOpen, setSearchOpen, searchPart, setSearchPart, searchParts, searchItems, reqId, refreshStats, resetRun, displayResults, loadCategory, loadReview, runSearch, startRandom, items, loadPaper, rawItem, baseItem, item, curId, curRevealed, submit, locked, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, go, runStats, currentBank, sections, parts, sectionsOf, saveNote, saveExpl, doReset, doLogout, switchBank, examTimeUp, crumbs, showTree }
+  const ctx = { EMPTY, authed, setAuthed, banks, setBanks, bank, setBank, stats, setStats, mode, setMode, sidebar, setSidebar, tree, setTree, sel, setSel, kindFilter, setKindFilter, list, setList, total, setTotal, page, setPage, loading, setLoading, idx, setIdx, picks, setPicks, results, setResults, freshIds, setFreshIds, marked, setMarked, hydrated, setHydrated, byIdRef, paperList, setPaperList, exam, setExam, examLeft, setExamLeft, examSubmitted, setExamSubmitted, examResult, setExamResult, savedExam, setSavedExam, runStatsRef, examLeftRef, picksRef, resultsRef, justAnsweredRef, goRef, wrong, setWrong, wrongSec, setWrongSec, reviewItems, setReviewItems, reviewTotal, setReviewTotal, reviewGraduated, setReviewGraduated, reviewLoading, setReviewLoading, markedList, setMarkedList, randomItems, setRandomItems, randomCount, setRandomCount, randomKind, setRandomKind, randomSmart, setRandomSmart, randomLoading, setRandomLoading, notes, setNotes, notesList, setNotesList, focusItem, setFocusItem, lightbox, setLightbox, theme, setTheme, pending, setPending, autoNext, setAutoNext, details, setDetails, searchQ, setSearchQ, searchKind, setSearchKind, searchRes, setSearchRes, searching, setSearching, searchOpen, setSearchOpen, searchPart, setSearchPart, searchParts, searchItems, reqId, refreshStats, resetRun, displayResults, loadCategory, loadReview, runSearch, startRandom, items, loadPaper, rawItem, baseItem, item, curId, curRevealed, submit, locked, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, go, runStats, currentBank, sections, parts, sectionsOf, saveNote, saveExpl, doReset, doLogout, switchBank, examTimeUp, crumbs, showTree, onPrev: () => go(-1), onNext: () => go(1), canPrev: idx > 0, canNext: idx < items.length - 1 }
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -888,7 +888,7 @@ export default function App() {
         onToggleAutoNext={() => setAutoNext((v) => !v)}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col md:ml-64">
         {/* 顶栏 */}
         <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
           <div className="flex items-center gap-2 px-4 py-2.5 md:px-6">
@@ -989,7 +989,7 @@ export default function App() {
             </>
           )}
 
-          <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-32 md:px-6">
+          <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-32 md:px-6 md:pb-6">
           <FocusView ctx={ctx} />
           <StatsPanel ctx={ctx} />
           <CategoryHome ctx={ctx} />

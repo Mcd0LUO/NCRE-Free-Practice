@@ -7,7 +7,7 @@ export default function FooterBar({ ctx }) {
     <>
 {/* 底部操作栏：n-safe-bottom 抬起，避开手机系统手势区 / 导航条 */}
 {item && (
-  <footer className="n-safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white">
+  <footer className="n-safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white md:hidden">
     <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 pt-2 md:px-6">
       <button
         type="button"

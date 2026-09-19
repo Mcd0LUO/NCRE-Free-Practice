@@ -3,7 +3,7 @@ import RunView from '../RunView.jsx'
 import { Loading, Empty } from '../components.jsx'
 
 export default function ReviewView({ ctx }) {
-  const { mode, idx, setIdx, picks, results, marked, reviewItems, reviewTotal, reviewGraduated, reviewLoading, details, displayResults, loadReview, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark } = ctx
+  const { mode, idx, setIdx, picks, results, marked, reviewItems, reviewTotal, reviewGraduated, reviewLoading, details, displayResults, loadReview, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, onPrev, onNext, canPrev, canNext } = ctx
   return (
     <>
 {/* ---------- 今日复习 ---------- */}
@@ -16,7 +16,7 @@ export default function ReviewView({ ctx }) {
       idx={idx}
       setIdx={setIdx}
       picks={picks}
-      results={displayResults}
+      results={displayResults} onPrev={onPrev} onNext={onNext} canPrev={canPrev} canNext={canNext}
       marked={marked}
       details={details}
       onPick={onPick}

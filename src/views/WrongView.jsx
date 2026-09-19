@@ -2,7 +2,7 @@ import React from 'react'
 import RunView from '../RunView.jsx'
 
 export default function WrongView({ ctx }) {
-  const { mode, idx, setIdx, picks, results, setFreshIds, marked, wrong, wrongSec, setWrongSec, notes, details, displayResults, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl } = ctx
+  const { mode, idx, setIdx, picks, results, setFreshIds, marked, wrong, wrongSec, setWrongSec, notes, details, displayResults, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl, onPrev, onNext, canPrev, canNext } = ctx
   return (
     <>
 {/* ---------- 错题本 ---------- */}
@@ -12,7 +12,7 @@ export default function WrongView({ ctx }) {
     idx={idx}
     setIdx={setIdx}
     picks={picks}
-    results={displayResults}
+    results={displayResults} onPrev={onPrev} onNext={onNext} canPrev={canPrev} canNext={canNext}
     notes={notes}
     onNote={saveNote}
     onExpl={saveExpl}

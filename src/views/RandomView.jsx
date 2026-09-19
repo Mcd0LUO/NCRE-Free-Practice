@@ -2,7 +2,7 @@ import React from 'react'
 import RunView from '../RunView.jsx'
 
 export default function RandomView({ ctx }) {
-  const { mode, idx, setIdx, picks, results, marked, randomItems, setRandomItems, randomCount, setRandomCount, randomKind, setRandomKind, randomSmart, setRandomSmart, randomLoading, notes, details, displayResults, startRandom, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl } = ctx
+  const { mode, idx, setIdx, picks, results, marked, randomItems, setRandomItems, randomCount, setRandomCount, randomKind, setRandomKind, randomSmart, setRandomSmart, randomLoading, notes, details, displayResults, startRandom, items, onCheck, onPick, onFill, onSelf, onToggleShow, onMark, saveNote, saveExpl, onPrev, onNext, canPrev, canNext } = ctx
   return (
     <>
 {/* ---------- 随机练习 / 智能组卷 ---------- */}
@@ -65,7 +65,7 @@ export default function RandomView({ ctx }) {
     idx={idx}
     setIdx={setIdx}
     picks={picks}
-    results={displayResults}
+    results={displayResults} onPrev={onPrev} onNext={onNext} canPrev={canPrev} canNext={canNext}
     notes={notes}
     onNote={saveNote}
     onExpl={saveExpl}
