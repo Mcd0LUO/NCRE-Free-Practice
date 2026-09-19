@@ -32,7 +32,9 @@ export default function QuestionCard({
     else done()
   }
 
-  const cor = correctLetters(item)
+  // 注意：填空题数据里可能残留 letters 字段（无意义），仅选择题才用正确答案
+  const cor = item.kind === 'single' || item.kind === 'multi' ? correctLetters(item) : ''
+  const fillSlots = item.kind === 'fill' ? (item.fills || []).filter((s) => s.alts?.length) : []
   const checked = !!result
   const showExp = result?.revealed
   const pickLetters = pick?.letters || ''
@@ -346,6 +348,20 @@ export default function QuestionCard({
               <span className="text-gray-600">正确答案：</span>
               <span className="font-mono font-medium text-[#37352f]">{cor}</span>
             </p>
+          )}
+
+          {item.kind === 'fill' && fillSlots.length > 0 && (
+            <div className="mt-3 rounded-md bg-gray-50 px-3 py-2 text-sm">
+              <div className="text-gray-600">各空参考答案</div>
+              <ol className="mt-1 space-y-0.5">
+                {fillSlots.map((s) => (
+                  <li key={s.n}>
+                    <span className="text-gray-500">第 {s.n} 空：</span>
+                    <span className="font-mono text-[#37352f]">{s.alts.join(' / ')}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
 
           {showExp && (
