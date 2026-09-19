@@ -324,6 +324,7 @@ export default function QuestionCard({
       {/* 结果与解析 */}
       {checked && (
         <div className="mt-4 border-t border-gray-200 pt-4">
+          <div className="flex items-center gap-2">
           <Verdict state={result.state}>
             {result.state === 'ok' ? '正确' : result.state === 'part' ? '部分正确' : '错误'}
             {result.full ? (
@@ -337,6 +338,8 @@ export default function QuestionCard({
               </span>
             ) : null}
           </Verdict>
+          {navBtns}
+          </div>
 
           {cor && (
             <p className="mt-3 rounded-md bg-gray-50 px-3 py-2 text-sm">
@@ -424,7 +427,6 @@ export default function QuestionCard({
                 {showExp ? '隐藏解析' : '查看解析'}
               </button>
             )}
-            {navBtns}
           </div>
         </div>
       )}
